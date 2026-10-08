@@ -1,0 +1,68 @@
+schema: spec-driven
+
+context: |
+  Product: "Campus EVM" - an online election system for campus elections that mimics
+  Electronic Voting Machines (a Control Unit + Ballot Unit pair per polling booth).
+  Goals: reliable, secure, transparent. Voter rolls / identity checks are OUT OF SCOPE
+  (handled manually at the booth before the Presiding Officer enables a ballot).
+
+  Tech stack:
+    - Next.js (App Router) + React + TypeScript (strict), deployed on Vercel
+    - Supabase Postgres (transactions, triggers, grants, row-level security)
+    - Supabase Realtime private broadcast channels for signalling (Ably is the fallback)
+    - Supabase Auth with TOTP MFA for staff users
+    - Tailwind CSS; the voting-terminal bundle must stay minimal
+    - Tests: Vitest (unit), Playwright (end-to-end, multi-browser master+terminal flows),
+      SQL tests (pgTAP or plain SQL) for triggers, grants and RLS
+
+  Domain vocabulary (use these exact terms):
+    - Election, Post (has `seats` N), Candidate (has ballot serial number), NOTA
+    - Polling Booth, Booth-Post mapping (a booth votes only on its mapped posts)
+    - Master Terminal (Presiding Officer's control unit), Voting Terminal (voter kiosk)
+    - Ballot Session (single-use enablement of one voting terminal for one voter)
+    - Vote Selection (one stored choice for one post), Mock Poll / Test Vote
+    - Booth Tally (signed close-of-poll record), Reconciliation, Result, Audit Event
+    - Roles: Super Admin, Returning Officer (RO, per election),
+      Presiding Officer (PO, per booth), Observer, Public (unauthenticated)
+
+  Settled voting rules:
+    - One Ballot Session covers ALL contested posts mapped to the booth.
+    - A voter MUST select exactly N candidates for a post with N seats. No blanks.
+    - NOTA is enabled/disabled per election. When enabled, NOTA is an exclusive
+      alternative to selecting N candidates for that post. NOTA never wins.
+    - Ties at the winning cut-off are FLAGGED, never resolved by the system.
+    - Live turnout (ballots cast per booth) is public; per-candidate counts are
+      hidden from everyone until results are declared.
+
+  Non-negotiable architecture rules:
+    1. Browsers never write to the database directly. All mutations go through
+       server actions / route handlers that check role, device and state.
+    2. Realtime messages are signals only; the database is the source of truth.
+       Clients re-fetch authoritative state on every signal and on reconnect.
+    3. Secrets (service key, vote-signing key) are server-only env vars.
+    4. Vote Selections and Audit Events are append-only, enforced in the database.
+    5. Ballot secrecy: no link between a Vote Selection and a Ballot Session,
+       voter, terminal event or precise time; no ordering information in votes.
+    6. All state transitions are validated server-side by the lifecycle rules.
+
+rules:
+  proposal:
+    - Include a "Depends on" line listing prerequisite changes
+    - Include a "Non-goals" bullet list
+  specs:
+    - Every security or secrecy property must have at least one scenario
+    - Use the domain vocabulary from context exactly
+  design:
+    - State how the change preserves ballot secrecy and integrity, or state that it does not touch votes
+  tasks:
+    - Every task states its verification (test name, command, or observable behaviour)
+    - Security-relevant tasks include a negative test (the forbidden action is rejected)
+
+operations:
+  apply:
+    guidance:
+      - Never weaken a database grant, trigger or RLS policy to make a test pass
+      - Run the full test suite for touched areas before marking a task complete
+  archive:
+    guidance:
+      - Summarize which capabilities were added or modified

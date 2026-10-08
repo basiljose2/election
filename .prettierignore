@@ -1,0 +1,13 @@
+.next
+node_modules
+supabase/.temp
+supabase/.branches
+playwright-report
+test-results
+openspec
+package-lock.json
+docs/ROADMAP.md
+AGENTS.md
+CLAUDE.md
+.claude
+tests/e2e/.auth

@@ -27,6 +27,25 @@ export interface StaffFixture {
   roles: RoleAssignment[];
 }
 
+/** Inserts a minimal Draft Election with this id (no-op if it exists). */
+export async function ensureElection(admin: Pick<Pool, "query">, electionId: string) {
+  await admin.query(
+    `insert into public.elections (id, name, polling_date)
+     values ($1::uuid, 'Fixture ' || $1::text, current_date) on conflict (id) do nothing`,
+    [electionId],
+  );
+}
+
+/** Inserts a minimal Polling Booth (and its Election) with these ids (no-op if present). */
+export async function ensureBooth(admin: Pick<Pool, "query">, electionId: string, boothId: string) {
+  await ensureElection(admin, electionId);
+  await admin.query(
+    `insert into public.booths (id, election_id, name, location)
+     values ($1::uuid, $2, 'Booth ' || $1::text, 'Fixture') on conflict (id) do nothing`,
+    [boothId, electionId],
+  );
+}
+
 /** Creates an auth user, a staff row and role assignments directly in the database. */
 export async function createStaffFixture(
   admin: Pool,
@@ -47,6 +66,8 @@ export async function createStaffFixture(
   );
   const assignments: RoleAssignment[] = [];
   for (const spec of roles) {
+    if (spec.electionId) await ensureElection(admin, spec.electionId);
+    if (spec.electionId && spec.boothId) await ensureBooth(admin, spec.electionId, spec.boothId);
     const { rows } = await admin.query<{ id: string }>(
       `insert into public.staff_roles (user_id, role, election_id, booth_id)
        values ($1, $2, $3, $4) returning id`,

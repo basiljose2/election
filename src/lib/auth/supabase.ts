@@ -26,7 +26,7 @@ export async function createSupabaseServerClient(): Promise<SupabaseClient> {
   });
 }
 
-/** Auth admin API only (create/ban staff users). Never used for data access. */
+/** Auth admin API (create/ban staff users) and candidate-media Storage writes. Never used for data access. */
 export function createSupabaseAdminClient(): SupabaseClient {
   const env = serverEnv();
   return createClient(env.supabaseUrl, env.supabaseSecretKey, {

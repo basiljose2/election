@@ -9,6 +9,9 @@ const staticHeaders = [
 const nextConfig: NextConfig = {
   poweredByHeader: false,
   experimental: {
+    // Candidate photos and symbols are uploaded through server actions (2 MB file limit,
+    // enforced again by the command), so allow a little more than the 1 MB default.
+    serverActions: { bodySizeLimit: "3mb" },
     // Every page is dynamic, so few build workers are needed; this keeps memory low on
     // CI runners and dev machines that also run the Supabase containers.
     cpus: Number(process.env.NEXT_BUILD_CPUS ?? 2),

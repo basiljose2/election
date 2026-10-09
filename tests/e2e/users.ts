@@ -15,6 +15,16 @@ export interface E2eUsers {
   run: string;
   electionId: string;
   boothId: string;
+  /** A second booth of `electionId`, free of Presiding Officers. */
+  spareBoothId: string;
+  /** Fixtures for the election-setup spec: an empty Draft election with its own staff. */
+  setup: {
+    electionId: string;
+    superAdmin: E2eUser;
+    returningOfficer: E2eUser;
+    presidingOfficer1: E2eUser;
+    presidingOfficer2: E2eUser;
+  };
   superAdmin: E2eUser;
   returningOfficer: E2eUser;
   presidingOfficer: E2eUser;

@@ -15,6 +15,11 @@ insert into public.staff (user_id, email, display_name) values
   ('22222222-2222-2222-2222-222222222222', 'ro@test.local', 'RO'),
   ('33333333-3333-3333-3333-333333333333', 'po@test.local', 'PO');
 
+insert into public.elections (id, name, polling_date)
+values ('eeeeeeee-0000-0000-0000-000000000001', 'Test Election', current_date);
+insert into public.booths (id, election_id, name, location)
+values ('bbbbbbbb-0000-0000-0000-000000000001', 'eeeeeeee-0000-0000-0000-000000000001', 'Booth', 'Hall');
+
 -- Scope CHECK constraints (negative tests).
 select throws_ok(
   $$ insert into public.staff_roles (user_id, role, election_id)

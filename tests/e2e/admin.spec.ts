@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import { E2E_PASSWORD, enrollTotp, loadUsers, signIn } from "./users";
 
@@ -8,7 +7,7 @@ test("a Super Admin creates staff, assigns and revokes a role, and deactivates t
   page,
   browser,
 }) => {
-  const { superAdmin, run } = loadUsers();
+  const { superAdmin, run, electionId, spareBoothId: boothId } = loadUsers();
   await signIn(page, superAdmin.email);
   await enrollTotp(page);
 
@@ -23,8 +22,6 @@ test("a Super Admin creates staff, assigns and revokes a role, and deactivates t
   await expect(page.getByRole("main").getByRole("status")).toHaveText("Staff account created");
 
   const card = page.getByTestId(`staff-${email}`);
-  const electionId = randomUUID();
-  const boothId = randomUUID();
 
   // A PO assignment without a booth is rejected by the scope rules.
   await card.getByLabel("Role").selectOption("presiding_officer");

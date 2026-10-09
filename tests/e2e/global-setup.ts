@@ -26,10 +26,31 @@ export default async function globalSetup() {
   const run = Date.now().toString(36);
   const electionId = randomUUID();
   const boothId = randomUUID();
+  const spareBoothId = randomUUID();
+  const setupElectionId = randomUUID();
+
+  for (const [id, name] of [
+    [electionId, "E2E election"],
+    [setupElectionId, "E2E setup election"],
+  ]) {
+    await db.query(
+      "insert into public.elections (id, name, polling_date) values ($1, $2, current_date)",
+      [id, `${name} ${run}`],
+    );
+  }
+  for (const [id, name] of [
+    [boothId, "E2E booth"],
+    [spareBoothId, "E2E spare booth"],
+  ]) {
+    await db.query(
+      "insert into public.booths (id, election_id, name, location) values ($1, $2, $3, 'Hall')",
+      [id, electionId, name],
+    );
+  }
 
   async function staff(
     label: string,
-    role: string,
+    role: string | null,
     scope: { electionId?: string; boothId?: string },
   ) {
     const email = `e2e-${label}-${run}@example.test`;
@@ -44,10 +65,12 @@ export default async function globalSetup() {
       email,
       `E2E ${label.toUpperCase()}`,
     ]);
-    await db.query(
-      "insert into public.staff_roles (user_id, role, election_id, booth_id) values ($1, $2, $3, $4)",
-      [data.user.id, role, scope.electionId ?? null, scope.boothId ?? null],
-    );
+    if (role) {
+      await db.query(
+        "insert into public.staff_roles (user_id, role, election_id, booth_id) values ($1, $2, $3, $4)",
+        [data.user.id, role, scope.electionId ?? null, scope.boothId ?? null],
+      );
+    }
     return { email, userId: data.user.id };
   }
 
@@ -55,6 +78,16 @@ export default async function globalSetup() {
     run,
     electionId,
     boothId,
+    spareBoothId,
+    setup: {
+      electionId: setupElectionId,
+      superAdmin: await staff("setup-sa", "super_admin", {}),
+      returningOfficer: await staff("setup-ro", "returning_officer", {
+        electionId: setupElectionId,
+      }),
+      presidingOfficer1: await staff("setup-po1", null, {}),
+      presidingOfficer2: await staff("setup-po2", null, {}),
+    },
     superAdmin: await staff("sa", "super_admin", {}),
     returningOfficer: await staff("ro", "returning_officer", { electionId }),
     presidingOfficer: await staff("po", "presiding_officer", { electionId, boothId }),

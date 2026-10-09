@@ -132,8 +132,17 @@ export function createStaffCommands(authAdmin: AuthAdmin) {
             "Returning Officers and Observers need an election; Presiding Officers need an election and a booth; Super Admins need neither",
           );
         }
+        if (pgCode(error) === "23503") {
+          throw new CommandError(
+            "not_found",
+            "The Election or Polling Booth does not exist (or the booth is not in that Election)",
+          );
+        }
         if (pgCode(error) === "23505")
-          throw new CommandError("conflict", "This role is already assigned");
+          throw new CommandError(
+            "conflict",
+            "This role is already assigned (a Polling Booth has only one Presiding Officer)",
+          );
         throw error;
       }
       return {

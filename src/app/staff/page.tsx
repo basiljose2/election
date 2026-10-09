@@ -29,6 +29,9 @@ export default async function StaffHome() {
         )}
       </section>
       <nav className="flex gap-4 text-sm underline">
+        {(superAdminGrant(actor) || actor.roles.some((r) => r.electionId)) && (
+          <Link href="/admin/elections">Elections</Link>
+        )}
         {superAdminGrant(actor) && <Link href="/admin/staff">Manage staff</Link>}
       </nav>
       <form action={signOutAction}>

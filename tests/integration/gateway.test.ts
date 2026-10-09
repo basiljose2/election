@@ -6,7 +6,15 @@ import { boothGrant, type Actor } from "@/lib/auth/roles";
 import { CommandError } from "@/lib/commands/errors";
 import { defineCommand, executeCommand, type GatewayDeps } from "@/lib/commands/gateway";
 import { createStaffCommands, type AuthAdmin } from "@/lib/commands/staff";
-import { actorFor, adminPool, appPool, auditEvents, createStaffFixture } from "../support/fixtures";
+import {
+  actorFor,
+  adminPool,
+  appPool,
+  auditEvents,
+  createStaffFixture,
+  ensureBooth,
+  ensureElection,
+} from "../support/fixtures";
 
 const app = appPool();
 const admin = adminPool();
@@ -64,6 +72,7 @@ describe("command gateway", () => {
   it("commits the change and exactly one Audit Event", async () => {
     const { assignRole } = createStaffCommands(fakeAuthAdmin());
     const electionId = randomUUID();
+    await ensureElection(admin, electionId);
     const { assignmentId } = await executeCommand(
       assignRole,
       { userId: target.userId, role: "observer", electionId },
@@ -84,6 +93,7 @@ describe("command gateway", () => {
   it("rolls back the change when the Audit Event cannot be written", async () => {
     const { assignRole } = createStaffCommands(fakeAuthAdmin());
     const electionId = randomUUID();
+    await ensureElection(admin, electionId);
     const failingAudit: AppendAuditEvent = async () => {
       throw new Error("injected audit failure");
     };
@@ -107,6 +117,7 @@ describe("command gateway", () => {
   it("rolls back when the database rejects the Audit Event after it was sent", async () => {
     const { assignRole } = createStaffCommands(fakeAuthAdmin());
     const electionId = randomUUID();
+    await ensureElection(admin, electionId);
     // Writes a real event, then a second one that breaks the chain (trigger rejects it).
     const brokenAudit: AppendAuditEvent = async (tx, input) => {
       await appendAuditEvent(tx, input);
@@ -226,6 +237,8 @@ describe("Super Admin only: staff management", () => {
     const authAdmin = fakeAuthAdmin();
     const { createStaff, assignRole, revokeRole, deactivateStaff } = createStaffCommands(authAdmin);
     const electionId = randomUUID();
+    const boothId = randomUUID();
+    await ensureBooth(admin, electionId, boothId);
 
     const { userId } = await executeCommand(
       createStaff,
@@ -238,7 +251,7 @@ describe("Super Admin only: staff management", () => {
     );
     const { assignmentId } = await executeCommand(
       assignRole,
-      { userId, role: "presiding_officer", electionId, boothId: randomUUID() },
+      { userId, role: "presiding_officer", electionId, boothId },
       deps(sa),
     );
     await executeCommand(revokeRole, { assignmentId }, deps(sa));

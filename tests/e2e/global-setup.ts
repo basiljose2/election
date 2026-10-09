@@ -4,6 +4,7 @@ import path from "node:path";
 import { createClient } from "@supabase/supabase-js";
 import { config } from "dotenv";
 import { Pool } from "pg";
+import { assertLocal } from "../support/local-only";
 import { E2E_PASSWORD, USERS_FILE, type E2eUsers } from "./users";
 
 config({ path: ".env.test.local", quiet: true });
@@ -17,6 +18,8 @@ export default async function globalSetup() {
   if (!url || !secret || !adminDb) {
     throw new Error("SUPABASE_URL, SUPABASE_SECRET_KEY and TEST_ADMIN_DATABASE_URL are required");
   }
+  assertLocal("SUPABASE_URL", url);
+  assertLocal("TEST_ADMIN_DATABASE_URL", adminDb);
   const auth = createClient(url, secret, { auth: { persistSession: false } }).auth.admin;
   const db = new Pool({ connectionString: adminDb, max: 1 });
 

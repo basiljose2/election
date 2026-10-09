@@ -1,6 +1,7 @@
 import "server-only";
 import { Pool, type PoolClient } from "pg";
 import { serverEnv } from "@/lib/env/server";
+import { SUPABASE_ROOT_CA } from "./supabase-ca";
 
 export type Db = Pool;
 export type Tx = PoolClient;
@@ -13,8 +14,23 @@ export function getPool(): Pool {
   return globalForPool.__campusEvmPool;
 }
 
+const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
+
+/**
+ * Local Postgres has no TLS. Hosted Supabase requires TLS with full certificate
+ * verification against the Supabase root CA (sslmode in the URL is ignored so it cannot
+ * weaken that).
+ */
 export function createPool(connectionString: string): Pool {
-  return new Pool({ connectionString, max: 5, idleTimeoutMillis: 10_000 });
+  const url = new URL(connectionString);
+  const local = LOCAL_HOSTS.has(url.hostname);
+  url.searchParams.delete("sslmode");
+  return new Pool({
+    connectionString: url.toString(),
+    ssl: local ? false : { ca: SUPABASE_ROOT_CA, rejectUnauthorized: true },
+    max: 5,
+    idleTimeoutMillis: 10_000,
+  });
 }
 
 /** Runs `fn` in one database transaction; rolls back if it throws. */

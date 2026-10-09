@@ -1,18 +1,17 @@
 import { randomUUID } from "node:crypto";
 import { Pool } from "pg";
 import type { Actor, RoleAssignment, StaffRole } from "@/lib/auth/roles";
+import { assertLocal } from "./local-only";
 
 /** Pool connected as app_server, exactly like the application. */
 export function appPool(max = 10): Pool {
-  const url = process.env.DATABASE_URL;
-  if (!url) throw new Error("DATABASE_URL is not set (copy .env.example to .env.local)");
+  const url = assertLocal("DATABASE_URL", process.env.DATABASE_URL);
   return new Pool({ connectionString: url, max });
 }
 
 /** Owner connection for fixtures only (local stack). Never used by application code. */
 export function adminPool(): Pool {
-  const url = process.env.TEST_ADMIN_DATABASE_URL;
-  if (!url) throw new Error("TEST_ADMIN_DATABASE_URL is not set");
+  const url = assertLocal("TEST_ADMIN_DATABASE_URL", process.env.TEST_ADMIN_DATABASE_URL);
   return new Pool({ connectionString: url, max: 2 });
 }
 

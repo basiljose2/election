@@ -1,4 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
+import { config } from "dotenv";
+
+// Local test settings win over .env.local so the app under test never talks to a hosted project.
+config({ path: ".env.test.local", quiet: true });
 
 const port = Number(process.env.PORT ?? 3000);
 const baseURL = process.env.E2E_BASE_URL ?? `http://localhost:${port}`;

@@ -24,7 +24,14 @@ import {
   type PairingDeps,
 } from "@/lib/terminals/pairing";
 import { OFFLINE_AFTER_MS, getTerminalState, recordHeartbeat } from "@/lib/terminals/state";
-import { actorFor, adminPool, appPool, auditEvents, createStaffFixture } from "../support/fixtures";
+import {
+  actorFor,
+  adminPool,
+  appPool,
+  auditEvents,
+  createStaffFixture,
+  insertBallotSession,
+} from "../support/fixtures";
 import { assertLocal } from "../support/local-only";
 import { describeSignalBusContract } from "../support/signal-contract";
 
@@ -36,7 +43,6 @@ const apiKey = process.env.SUPABASE_PUBLISHABLE_KEY!;
 const secretKey = process.env.SUPABASE_SECRET_KEY!;
 
 afterAll(async () => {
-  await admin.query("drop table if exists public.ballot_sessions");
   await Promise.all([app.end(), admin.end()]);
 });
 
@@ -187,38 +193,17 @@ describe("terminal state endpoint", () => {
   it("gives a Voting Terminal state and version but never a count or choice data", async () => {
     clock = new Date();
     const b = await pairedBooth();
-    await admin.query(
-      "create table if not exists public.ballot_sessions (booth_id uuid not null, status text not null, is_mock boolean not null default false)",
-    );
-    await admin.query("grant select on public.ballot_sessions to app_server");
-    await admin.query(
-      "insert into public.ballot_sessions values ($1, 'cast', false), ($1, 'cast', false), ($1, 'pending', false)",
-      [b.boothId],
-    );
-    try {
-      const voting = await getTerminalState(
-        stateDeps(),
-        asTerminal(b, b.votingTerminalId, "voting"),
-      );
-      expect(Object.keys(voting).sort()).toEqual([
-        "ballotPending",
-        "boothState",
-        "role",
-        "version",
-      ]);
-      expect(voting).toMatchObject({ role: "voting", ballotPending: true, boothState: "setup" });
-      expect(JSON.stringify(voting)).not.toMatch(
-        /count|cast|candidate|choice|nota|selection|total/i,
-      );
+    await insertBallotSession(admin, { boothId: b.boothId, status: "cast" });
+    await insertBallotSession(admin, { boothId: b.boothId, status: "cast" });
+    await insertBallotSession(admin, { boothId: b.boothId, status: "pending" });
 
-      const master = await getTerminalState(
-        stateDeps(),
-        asTerminal(b, b.masterTerminalId, "master"),
-      );
-      expect(master).toMatchObject({ role: "master", ballotsCast: 2, ballotPending: true });
-    } finally {
-      await admin.query("drop table public.ballot_sessions");
-    }
+    const voting = await getTerminalState(stateDeps(), asTerminal(b, b.votingTerminalId, "voting"));
+    expect(Object.keys(voting).sort()).toEqual(["ballotPending", "boothState", "role", "version"]);
+    expect(voting).toMatchObject({ role: "voting", ballotPending: true, boothState: "setup" });
+    expect(JSON.stringify(voting)).not.toMatch(/count|cast|candidate|choice|nota|selection|total/i);
+
+    const master = await getTerminalState(stateDeps(), asTerminal(b, b.masterTerminalId, "master"));
+    expect(master).toMatchObject({ role: "master", ballotsCast: 2, ballotPending: true });
   });
 
   it("derives online/offline from heartbeats (clock-mocked) and audits going offline once", async () => {

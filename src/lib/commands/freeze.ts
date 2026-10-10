@@ -1,7 +1,9 @@
 import { z } from "zod";
 import type { Tx } from "@/lib/db/pool";
 import { buildFrozenSetup, validateFreeze, type Violation } from "@/lib/setup/freeze";
+import { serverEnv } from "@/lib/env/server";
 import { loadSetupData } from "@/lib/setup/load";
+import { ensureElectionSigningKey, parseMasterKey, SigningKeyError } from "@/lib/votes/keys";
 import { CommandError } from "./errors";
 import { defineCommand } from "./gateway";
 import { describeElection, pgCode, returningOfficerGrant, uuid } from "./setup-common";
@@ -45,7 +47,21 @@ export const freezeSetup = defineCommand({
     const election = await lockElection(tx, input.electionId);
     const freezeNumber = election.freeze_count + 1;
     const data = await loadSetupData(tx, input.electionId);
-    const frozen = buildFrozenSetup(data, freezeNumber);
+
+    // The Election's vote-signing key pair is created at the first freeze (and kept across
+    // unfreeze/refreeze); its public key becomes part of the published, hashed setup.
+    let signingPublicKey: string;
+    try {
+      signingPublicKey = await ensureElectionSigningKey(
+        tx,
+        input.electionId,
+        parseMasterKey(serverEnv().voteSigningMasterKey),
+      );
+    } catch (error) {
+      if (error instanceof SigningKeyError) throw new CommandError("lifecycle", error.message);
+      throw error;
+    }
+    const frozen = buildFrozenSetup(data, freezeNumber, { signingPublicKey });
 
     // Posts are marked while the Election is still Draft (the Draft-only triggers).
     await tx.query(

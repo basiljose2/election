@@ -24,6 +24,7 @@ import {
   appPool,
   auditEvents,
   createStaffFixture,
+  insertBallotSession,
   setBoothState,
 } from "../support/fixtures";
 
@@ -33,7 +34,6 @@ const bus = new MemorySignalBus();
 const commands = createTerminalCommands(bus);
 
 afterAll(async () => {
-  await admin.query("drop table if exists public.ballot_sessions");
   await Promise.all([app.end(), admin.end()]);
 });
 
@@ -545,27 +545,19 @@ describe("replacement and availability rules", () => {
     const f = await frozenBooth();
     const { token } = await registerMaster(f);
     await pairVotingTerminal(f, token);
-    await admin.query(
-      "create table if not exists public.ballot_sessions (booth_id uuid not null, status text not null)",
+    await insertBallotSession(admin, { boothId: f.boothId, status: "pending" });
+    await expectCommandError(
+      executeCommand(
+        commands.generatePairingCode,
+        { boothId: f.boothId, masterToken: token },
+        gatewayDeps(f.po),
+      ),
+      "lifecycle",
     );
-    await admin.query("grant select on public.ballot_sessions to app_server");
-    await admin.query("insert into public.ballot_sessions values ($1, 'pending')", [f.boothId]);
-    try {
-      await expectCommandError(
-        executeCommand(
-          commands.generatePairingCode,
-          { boothId: f.boothId, masterToken: token },
-          gatewayDeps(f.po),
-        ),
-        "lifecycle",
-      );
-      await expectCommandError(
-        executeCommand(commands.registerMaster, { boothId: f.boothId }, gatewayDeps(f.po)),
-        "lifecycle",
-      );
-    } finally {
-      await admin.query("drop table public.ballot_sessions");
-    }
+    await expectCommandError(
+      executeCommand(commands.registerMaster, { boothId: f.boothId }, gatewayDeps(f.po)),
+      "lifecycle",
+    );
     // Nothing was replaced.
     const active = await admin.query(
       "select count(*) n from public.terminals where booth_id = $1 and status = 'active'",
@@ -589,16 +581,8 @@ describe("replacement and availability rules", () => {
       },
       gatewayDeps(f.po),
     );
-    await admin.query(
-      "create table if not exists public.ballot_sessions (booth_id uuid not null, status text not null)",
-    );
-    await admin.query("grant select on public.ballot_sessions to app_server");
-    await admin.query("insert into public.ballot_sessions values ($1, 'pending')", [f.boothId]);
-    try {
-      expect(await collectPairing(pairingDeps, { nonce })).toEqual({ status: "unavailable" });
-    } finally {
-      await admin.query("drop table public.ballot_sessions");
-    }
+    await insertBallotSession(admin, { boothId: f.boothId, status: "pending" });
+    expect(await collectPairing(pairingDeps, { nonce })).toEqual({ status: "unavailable" });
   });
 
   it("terminals cannot be registered in a Draft election (negative test)", async () => {

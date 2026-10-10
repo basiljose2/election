@@ -143,3 +143,69 @@ export async function setBoothState(
     ]);
   }
 }
+
+let sessionIssuer: string | undefined;
+
+/**
+ * Inserts a real Ballot Session row (with a revoked stand-in Voting Terminal and an issuing
+ * staff member) for tests that need "a session exists / is pending / was cast" at a booth.
+ * Sessions can never be deleted, so tests create fresh elections instead of cleaning up.
+ */
+export async function insertBallotSession(
+  admin: Pool,
+  input: {
+    boothId: string;
+    status?: "pending" | "cast" | "cancelled";
+    isMock?: boolean;
+    mockRound?: number;
+  },
+): Promise<string> {
+  const status = input.status ?? "pending";
+  const isMock = input.isMock ?? false;
+  const booth = await admin.query<{ election_id: string; round: number }>(
+    `select b.election_id, c.mock_round as round
+       from public.booths b join public.booth_counters c on c.booth_id = b.id where b.id = $1`,
+    [input.boothId],
+  );
+  const { election_id: electionId, round } = booth.rows[0]!;
+  sessionIssuer ??= (await createStaffFixture(admin, [])).userId;
+  const terminal = await admin.query<{ id: string }>(
+    `insert into public.terminals
+       (election_id, booth_id, type, status, credential_hash, revoked_at, revoked_reason)
+     values ($1, $2, 'voting', 'revoked', encode(sha256(gen_random_uuid()::text::bytea), 'hex'),
+             now(), 'fixture') returning id`,
+    [electionId, input.boothId],
+  );
+  const { rows } = await admin.query<{ id: string }>(
+    `insert into public.ballot_sessions
+       (election_id, booth_id, terminal_id, is_mock, mock_round, status, issued_by,
+        finished_at, idempotency_key_hash, cancel_reason)
+     values ($1, $2, $3, $4, $5, $6::public.ballot_session_status, $7,
+             case when $6::text = 'pending' then null else now() end,
+             case when $6::text = 'cast' then encode(sha256(gen_random_uuid()::text::bytea), 'hex') end,
+             case when $6::text = 'cancelled' then 'voter_left' end)
+     returning id`,
+    [
+      electionId,
+      input.boothId,
+      terminal.rows[0]!.id,
+      isMock,
+      isMock ? (input.mockRound ?? Math.max(round, 1)) : null,
+      status,
+      sessionIssuer,
+    ],
+  );
+  // Counters move with the status, as in the real cast/cancel transaction.
+  if (status === "cast" && !isMock) {
+    await admin.query(
+      "update public.booth_counters set ballots_cast = ballots_cast + 1 where booth_id = $1",
+      [input.boothId],
+    );
+  } else if (status === "cancelled") {
+    await admin.query(
+      "update public.booth_counters set ballots_cancelled = ballots_cancelled + 1 where booth_id = $1",
+      [input.boothId],
+    );
+  }
+  return rows[0]!.id;
+}

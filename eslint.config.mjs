@@ -17,6 +17,15 @@ const eslintConfig = defineConfig([
     "tests/fixtures/**/.next/**",
     "supabase/.temp/**",
   ]),
+  // Casting code handles vote choices. Nothing there may write to the console (or anything
+  // else that ends up in logs): use src/lib/log.ts, which keeps an allowlist of fields.
+  {
+    files: ["src/lib/votes/**/*.ts", "src/app/terminal/api/**/*.ts", "src/app/master/api/**/*.ts"],
+    ignores: ["**/*.test.ts"],
+    rules: {
+      "no-console": "error",
+    },
+  },
 ]);
 
 export default eslintConfig;

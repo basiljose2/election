@@ -38,8 +38,9 @@ export interface MasterTerminalState {
   version: number;
   boothState: string;
   ballotPending: boolean;
-  /** Ballots cast at this booth (a count only). */
+  /** Ballots cast and cancelled at this booth (counts only; never a choice). */
   ballotsCast: number;
+  ballotsCancelled: number;
   votingTerminal: {
     paired: boolean;
     deviceId: string | null;
@@ -144,14 +145,17 @@ export async function getTerminalState(
   const c = code.rows[0];
   const codeLive = c ? (c.status === "active" ? c.expires_at : c.pending_expires_at)! > now : false;
 
-  const cast = await deps.db.query<{ n: string }>("select public.booth_ballots_cast($1) as n", [
-    terminal.boothId,
-  ]);
+  const cast = await deps.db.query<{ n: string; cancelled: string }>(
+    `select public.booth_ballots_cast($1) as n,
+            (select ballots_cancelled from public.booth_counters where booth_id = $1) as cancelled`,
+    [terminal.boothId],
+  );
 
   return {
     role: "master",
     ...common,
     ballotsCast: Number(cast.rows[0]!.n),
+    ballotsCancelled: Number(cast.rows[0]!.cancelled ?? 0),
     votingTerminal: {
       paired: Boolean(v),
       deviceId: v?.device_id ?? null,

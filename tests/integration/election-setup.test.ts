@@ -31,6 +31,7 @@ import {
   appPool,
   auditEvents,
   createStaffFixture,
+  insertBallotSession,
   type StaffFixture,
 } from "../support/fixtures";
 
@@ -38,7 +39,6 @@ const app = appPool();
 const admin = adminPool();
 
 afterAll(async () => {
-  await admin.query("drop table if exists public.ballot_sessions");
   await Promise.all([app.end(), admin.end()]);
 });
 
@@ -746,27 +746,18 @@ describe("unfreeze", () => {
     const d = deps(f.ro);
     await executeCommand(freezeSetup, { electionId: f.electionId }, d);
 
-    // ballot_sessions is owned by ballot-casting-core; a minimal fixture table stands in.
-    await admin.query("create table if not exists public.ballot_sessions (booth_id uuid not null)");
-    await admin.query("grant select on public.ballot_sessions to app_server");
-    await admin.query("insert into public.ballot_sessions (booth_id) values ($1)", [
-      f.main.boothId,
-    ]);
-    try {
-      await expectCommandError(
-        executeCommand(unfreezeSetup, { electionId: f.electionId }, d),
-        "lifecycle",
-      );
-      expect((await loadSetupView(app, f.electionId))!.election.status).toBe("frozen");
-      // The database refuses too, even if a command were bypassed.
-      await expect(
-        app.query("update public.elections set status = 'draft', frozen_at = null where id = $1", [
-          f.electionId,
-        ]),
-      ).rejects.toMatchObject({ code: "P0001" });
-    } finally {
-      await admin.query("drop table public.ballot_sessions");
-    }
+    await insertBallotSession(admin, { boothId: f.main.boothId, isMock: true });
+    await expectCommandError(
+      executeCommand(unfreezeSetup, { electionId: f.electionId }, d),
+      "lifecycle",
+    );
+    expect((await loadSetupView(app, f.electionId))!.election.status).toBe("frozen");
+    // The database refuses too, even if a command were bypassed.
+    await expect(
+      app.query("update public.elections set status = 'draft', frozen_at = null where id = $1", [
+        f.electionId,
+      ]),
+    ).rejects.toMatchObject({ code: "P0001" });
   });
 
   it("requires re-authentication and the Returning Officer", async () => {

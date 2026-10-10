@@ -13,6 +13,10 @@ that was hashed (`setup_snapshots.canonical_json`) and one Ballot Definition per
 - Public copy: `GET /api/elections/<id>/setup` returns `{ setup_hash, canonical_json, freeze_no }`
   for a Frozen Election. Verify with: `sha256(canonical_json) == setup_hash`.
 
+The setup also carries `signing: { algorithm: "Ed25519", public_key }`, the key that signs every
+Vote Selection of the Election (see `docs/VOTE_FORMAT.md`). It is created at the first freeze and
+kept across unfreeze/refreeze, so it is published before any vote can exist.
+
 Contents: election settings, Posts (with `uncontested`), Candidates (with `serial` 1..k for
 contested Posts, content hashes of photo and symbol images), booths and their Booth-Post mapping.
 Candidate images are content-addressed WebP files in the `candidate-media` Storage bucket

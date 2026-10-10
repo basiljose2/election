@@ -191,22 +191,23 @@ select lives_ok(
   $$ update public.posts set display_order = 1 where id = 'b0000000-0000-0000-0000-000000000001' $$,
   'Election B (still Draft) remains editable');
 
--- Unfreeze is blocked once a Ballot Session exists (a fixture table stands in for the
--- ballot-casting-core table; it is rolled back with the test).
-reset role;
-create table public.ballot_sessions (booth_id uuid not null);
-grant select on public.ballot_sessions to app_server;
-set local role app_server;
-
+-- Unfreeze is blocked once a Ballot Session exists (the session is rolled back to a savepoint
+-- afterwards, because Ballot Sessions can never be deleted).
 select ok(not public.election_has_ballot_session('e0000000-0000-0000-0000-00000000000a'),
   'no Ballot Session exists yet');
 
 reset role;
-insert into public.ballot_sessions values ('d0000000-0000-0000-0000-000000000002');
+savepoint before_session;
+insert into public.terminals (id, election_id, booth_id, type, credential_hash)
+values ('f0000000-0000-0000-0000-000000000009', 'e0000000-0000-0000-0000-00000000000a',
+        'd0000000-0000-0000-0000-000000000002', 'voting', repeat('9', 64));
+insert into public.ballot_sessions (election_id, booth_id, terminal_id, is_mock, mock_round, issued_by)
+values ('e0000000-0000-0000-0000-00000000000a', 'd0000000-0000-0000-0000-000000000002',
+        'f0000000-0000-0000-0000-000000000009', true, 1, '11111111-1111-1111-1111-111111111111');
 set local role app_server;
 
 select ok(public.election_has_ballot_session('e0000000-0000-0000-0000-00000000000a'),
-  'a fixture Ballot Session is detected');
+  'a (mock) Ballot Session is detected');
 
 select throws_ok(
   $$ update public.elections set status = 'draft', frozen_at = null
@@ -215,7 +216,7 @@ select throws_ok(
   'a Frozen Election with a Ballot Session cannot be unfrozen');
 
 reset role;
-delete from public.ballot_sessions;
+rollback to savepoint before_session;
 set local role app_server;
 
 select lives_ok(

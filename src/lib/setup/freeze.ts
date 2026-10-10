@@ -148,7 +148,11 @@ export const sha256Hex = (text: string): string =>
  * makes a later freeze hash differently even if nothing else changed.
  * Callers must have validated the data (`validateFreeze` returned no violations).
  */
-export function buildFrozenSetup(data: SetupData, freezeNumber: number): FrozenSetup {
+export function buildFrozenSetup(
+  data: SetupData,
+  freezeNumber: number,
+  options: { signingPublicKey?: string } = {},
+): FrozenSetup {
   const posts = [...data.posts].sort(byOrder);
   const orderOf = new Map(posts.map((p, i) => [p.id, i]));
   const serials = new Map<string, number>(); // candidate id -> ballot serial (contested only)
@@ -182,6 +186,10 @@ export function buildFrozenSetup(data: SetupData, freezeNumber: number): FrozenS
       polling_date: data.election.pollingDate,
       nota_enabled: data.election.notaEnabled,
     },
+    // The key that signs this Election's Vote Selections; published so anyone can verify them.
+    ...(options.signingPublicKey
+      ? { signing: { algorithm: "Ed25519", public_key: options.signingPublicKey } }
+      : {}),
     posts: postEntries,
     booths: booths.map((b) => ({
       id: b.id,

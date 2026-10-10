@@ -16,6 +16,8 @@ const schema = z.object({
   SUPABASE_SECRET_KEY: z.string().min(1),
   // Needed only to mint terminal channel tokens (Supabase Realtime); see docs/ENVIRONMENTS.md.
   SUPABASE_JWT_SECRET: z.string().min(32).optional(),
+  // 32 random bytes, base64: unwraps the per-election vote signing keys (envelope encryption).
+  VOTE_SIGNING_MASTER_KEY: z.string().min(40).optional(),
   SIGNAL_PROVIDER: z.enum(["supabase", "ably"]).default("supabase"),
   ABLY_API_KEY: z.string().min(1).optional(),
   VERCEL_ENV: z.enum(["production", "preview", "development"]).optional(),
@@ -28,6 +30,7 @@ export interface ServerEnv {
   supabasePublishableKey: string;
   supabaseSecretKey: string;
   supabaseJwtSecret: string | undefined;
+  voteSigningMasterKey: string | undefined;
   signalProvider: "supabase" | "ably";
   ablyApiKey: string | undefined;
 }
@@ -74,6 +77,7 @@ export function parseServerEnv(source: Record<string, string | undefined>): Serv
     supabasePublishableKey: env.SUPABASE_PUBLISHABLE_KEY,
     supabaseSecretKey: env.SUPABASE_SECRET_KEY,
     supabaseJwtSecret: env.SUPABASE_JWT_SECRET,
+    voteSigningMasterKey: env.VOTE_SIGNING_MASTER_KEY,
     signalProvider: env.SIGNAL_PROVIDER,
     ablyApiKey: env.ABLY_API_KEY,
   };

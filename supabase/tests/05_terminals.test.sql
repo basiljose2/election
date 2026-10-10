@@ -134,13 +134,13 @@ select ok(not public.booth_accepts_terminals('d0000000-0000-0000-0000-0000000000
   'a Closed booth does not accept terminals');
 
 reset role;
-create table public.ballot_sessions (booth_id uuid not null, status text not null);
-grant select on public.ballot_sessions to app_server;
-insert into public.ballot_sessions values ('d0000000-0000-0000-0000-000000000001', 'pending');
+insert into public.ballot_sessions (election_id, booth_id, terminal_id, is_mock, mock_round, issued_by)
+values ('e0000000-0000-0000-0000-00000000000a', 'd0000000-0000-0000-0000-000000000001',
+        'a0000000-0000-0000-0000-000000000001', true, 1, '11111111-1111-1111-1111-111111111111');
 set local role app_server;
 
 select ok(public.booth_has_pending_ballot_session('d0000000-0000-0000-0000-000000000001'),
-  'a pending Ballot Session (fixture) is detected');
+  'a pending Ballot Session is detected');
 
 select is(public.bump_booth_state_version('d0000000-0000-0000-0000-000000000001') + 1,
   public.bump_booth_state_version('d0000000-0000-0000-0000-000000000001'),

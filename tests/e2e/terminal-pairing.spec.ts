@@ -133,20 +133,21 @@ test("with real-time blocked, the Voting Terminal unlocks within 3 seconds by po
   await expect(kiosk.getByTestId("terminal-locked")).toBeVisible();
   await kiosk.waitForTimeout(500); // (the page never goes network-idle while polling)
 
-  // A Ballot Session becomes pending (stand-in fixture for ballot-casting-core).
-  await db.query(
-    "create table if not exists public.ballot_sessions (booth_id uuid not null, status text not null, is_mock boolean not null default false)",
-  );
-  await db.query("grant select on public.ballot_sessions to app_server");
+  // A Ballot Session becomes pending (inserted directly: issuing is not wired to a screen yet).
   try {
     const started = Date.now();
-    await db.query("insert into public.ballot_sessions (booth_id, status) values ($1, 'pending')", [
-      terminals.boothId,
-    ]);
+    await db.query(
+      `with t as (
+         insert into public.terminals (election_id, booth_id, type, status, credential_hash, revoked_at, revoked_reason)
+         values ($1, $2, 'voting', 'revoked', encode(sha256(gen_random_uuid()::text::bytea), 'hex'), now(), 'fixture')
+         returning id)
+       insert into public.ballot_sessions (election_id, booth_id, terminal_id, is_mock, issued_by)
+       select $1, $2, t.id, false, $3 from t`,
+      [terminals.electionId, terminals.boothId, terminals.presidingOfficer.userId],
+    );
     await baseExpect(kiosk.getByTestId("terminal-unlocked")).toBeVisible({ timeout: 3_000 });
     expect(Date.now() - started).toBeLessThan(3_000);
   } finally {
-    await db.query("drop table public.ballot_sessions");
     await db.end();
   }
   await Promise.all([masterContext.close(), kioskContext.close()]);

@@ -1,11 +1,13 @@
 import { randomBytes, randomUUID } from "node:crypto";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 import { appendAuditEvent } from "@/lib/audit/append";
 import type { Actor } from "@/lib/auth/roles";
 import { CommandError } from "@/lib/commands/errors";
 import { executeCommand, type GatewayDeps } from "@/lib/commands/gateway";
 import { createLifecycleCommands } from "@/lib/lifecycle/engine";
-import { defaultGuards, fail, pass, type GuardRegistry } from "@/lib/lifecycle/guards";
+import { createAppLifecycle } from "@/lib/lifecycle/app";
+import { ballotGuards } from "@/lib/votes/guards";
+import { defaultGuards, pass } from "@/lib/lifecycle/guards";
 import { MemorySignalBus } from "@/lib/signals/memory";
 import { OFFLINE_AFTER_MS } from "@/lib/terminals/state";
 import {
@@ -14,6 +16,7 @@ import {
   appPool,
   auditEvents,
   createStaffFixture,
+  insertBallotSession,
   setBoothState,
   type BoothStateName,
 } from "../support/fixtures";
@@ -25,63 +28,11 @@ const bus = new MemorySignalBus();
 let clock = new Date();
 const now = () => clock;
 
-/**
- * Stand-ins for the guards ballot-casting-core will register. They read fixture tables that
- * this test creates: ballot_sessions(booth_id, status, is_mock) and fixture_mock_tally.
- */
-const ballotGuards: GuardRegistry = {
-  async noPendingBallot({ tx, boothId }) {
-    const { rows } = await tx.query(
-      "select 1 from public.ballot_sessions where booth_id = $1 and status = 'pending'",
-      [boothId],
-    );
-    return rows.length
-      ? fail("a Ballot Session is pending; wait for the vote or cancel the ballot")
-      : pass();
-  },
-  async mockBallotCast({ tx, boothId }) {
-    const { rows } = await tx.query<{ n: string }>(
-      "select count(*) n from public.ballot_sessions where booth_id = $1 and status = 'cast' and is_mock",
-      [boothId],
-    );
-    const n = Number(rows[0]!.n);
-    if (n === 0) return fail("no mock ballot has been cast in this mock poll");
-    const tally = await tx.query<{ post: string; serial: number; n: number }>(
-      "select post, serial, n from public.fixture_mock_tally where booth_id = $1 order by post, serial",
-      [boothId],
-    );
-    return pass({
-      mock_ballots: n,
-      mock_tally: tally.rows.map((r) => ({ post: r.post, serial: r.serial, count: r.n })),
-    });
-  },
-  async zeroRealBallots({ tx, boothId }) {
-    const { rows } = await tx.query<{ n: string }>(
-      "select count(*) n from public.ballot_sessions where booth_id = $1 and status = 'cast' and not is_mock",
-      [boothId],
-    );
-    return Number(rows[0]!.n) === 0
-      ? pass()
-      : fail("real ballots have already been cast at this booth");
-  },
-};
-const guards: GuardRegistry = { ...defaultGuards, ...ballotGuards };
-const commands = createLifecycleCommands({ publisher: bus, guards });
-
-beforeAll(async () => {
-  await admin.query(
-    "create table if not exists public.ballot_sessions (booth_id uuid not null, status text not null, is_mock boolean not null default false)",
-  );
-  await admin.query("grant select, update on public.ballot_sessions to app_server");
-  await admin.query(
-    "create table if not exists public.fixture_mock_tally (booth_id uuid not null, post text not null, serial int not null, n int not null)",
-  );
-  await admin.query("grant select on public.fixture_mock_tally to app_server");
-});
+// The application's own guards and hooks, against the real tables (no fixture tables).
+const commands = createAppLifecycle(bus);
+const guards = { ...defaultGuards, ...ballotGuards };
 
 afterAll(async () => {
-  await admin.query("drop table if exists public.ballot_sessions");
-  await admin.query("drop table if exists public.fixture_mock_tally");
   await Promise.all([app.end(), admin.end()]);
 });
 
@@ -126,6 +77,18 @@ async function world(
     "insert into public.booths (id, election_id, name, location) values ($1, $2, 'Hall', 'A')",
     [boothId, electionId],
   );
+  const postId = randomUUID();
+  const candidateIds = [randomUUID(), randomUUID()];
+  await admin.query(
+    "insert into public.posts (id, election_id, name, display_order, seats) values ($1, $2, 'President', 0, 1)",
+    [postId, electionId],
+  );
+  for (const [i, id] of candidateIds.entries()) {
+    await admin.query(
+      "insert into public.candidates (id, election_id, post_id, name, sort_order) values ($1, $2, $3, $4, $5)",
+      [id, electionId, postId, `Candidate ${i}`, i],
+    );
+  }
   const po = actorFor(
     await createStaffFixture(admin, [{ role: "presiding_officer", electionId, boothId }]),
   );
@@ -153,7 +116,7 @@ async function world(
     }
   }
   await setBoothState(admin, boothId, booth);
-  return { electionId, boothId, po, ro };
+  return { electionId, boothId, po, ro, postId, candidateIds };
 }
 
 async function advanceElection(electionId: string, target: ElectionStatus) {
@@ -171,8 +134,13 @@ const boothState = async (boothId: string) =>
 const electionStatus = async (electionId: string) =>
   (await admin.query("select status::text s from public.elections where id = $1", [electionId]))
     .rows[0].s;
-const addSession = (boothId: string, status: string, mock = false) =>
-  admin.query("insert into public.ballot_sessions values ($1, $2, $3)", [boothId, status, mock]);
+const addSession = (boothId: string, status: "pending" | "cast" | "cancelled", mock = false) =>
+  insertBallotSession(admin, { boothId, status, isMock: mock });
+const cancelSession = (id: string) =>
+  admin.query(
+    "update public.ballot_sessions set status = 'cancelled', finished_at = now(), cancel_reason = 'voter_left' where id = $1",
+    [id],
+  );
 
 describe("transition engine", () => {
   it("two identical open-poll requests at once give exactly one success", async () => {
@@ -499,18 +467,24 @@ describe("booth transitions", () => {
       );
     await expectError(clear(), "lifecycle", /no mock ballot has been cast/);
 
+    await admin.query("update public.booth_counters set mock_round = 1 where booth_id = $1", [
+      w.boothId,
+    ]);
     for (let i = 0; i < 3; i++) await addSession(w.boothId, "cast", true);
-    await admin.query(
-      "insert into public.fixture_mock_tally values ($1, 'President', 1, 2), ($1, 'President', 2, 1)",
-      [w.boothId],
-    );
+    // Three mock ballots: two for candidate 0, one for candidate 1 (rows the owner inserts,
+    // standing in for what the cast path stores).
+    for (const candidate of [0, 0, 1]) {
+      await admin.query(
+        `insert into public.vote_selections
+           (election_id, booth_id, post_id, candidate_id, is_mock, mock_round, signature)
+         values ($1, $2, $3, $4, true, 1, repeat('A', 86))`,
+        [w.electionId, w.boothId, w.postId, w.candidateIds[candidate]],
+      );
+    }
 
-    await addSession(w.boothId, "pending", true);
+    const pending = await addSession(w.boothId, "pending", true);
     await expectError(clear(), "lifecycle", /Ballot Session is pending/);
-    await admin.query(
-      "delete from public.ballot_sessions where booth_id = $1 and status = 'pending'",
-      [w.boothId],
-    );
+    await cancelSession(pending);
 
     await clear();
     expect(await boothState(w.boothId)).toBe("mock_cleared");
@@ -518,17 +492,19 @@ describe("booth transitions", () => {
       electionId: w.electionId,
       eventType: "booth.mock_poll_cleared",
     });
+    const expected = [
+      { post_id: w.postId, option: w.candidateIds[0], count: 2 },
+      { post_id: w.postId, option: w.candidateIds[1], count: 1 },
+    ].sort((x, y) => `${x.option}`.localeCompare(`${y.option}`));
     expect(event!.payload.detail).toMatchObject({
-      guards: {
-        mockBallotCast: {
-          mock_ballots: 3,
-          mock_tally: [
-            { post: "President", serial: 1, count: 2 },
-            { post: "President", serial: 2, count: 1 },
-          ],
-        },
-      },
+      guards: { mockBallotCast: { mock_round: 1, mock_ballots: 3, mock_tally: expected } },
     });
+    // Clearing counted nothing as a real ballot.
+    const counters = await admin.query(
+      "select ballots_cast from public.booth_counters where booth_id = $1",
+      [w.boothId],
+    );
+    expect(Number(counters.rows[0].ballots_cast)).toBe(0);
   });
 
   it("repeat mock poll: Mock Cleared goes back to Mock Poll", async () => {
@@ -636,9 +612,9 @@ describe("booth transitions", () => {
     it("is rejected with a pending Ballot Session, then closes, and can never reopen", async () => {
       clock = new Date();
       const w = await world({ booth: "open" });
-      await addSession(w.boothId, "pending");
+      const pending = await addSession(w.boothId, "pending");
       await expectError(close(w), "lifecycle", /wait for the vote or cancel the ballot/);
-      await admin.query("delete from public.ballot_sessions where booth_id = $1", [w.boothId]);
+      await cancelSession(pending);
 
       await close(w);
       expect(await boothState(w.boothId)).toBe("closed");

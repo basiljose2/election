@@ -65,6 +65,25 @@ async function loadDefinition(
   return JSON.parse(rows[0].canonical_json) as BallotDefinitionView & Record<string, unknown>;
 }
 
+/**
+ * The booth's current Ballot Definition for its Voting Terminal, with no Ballot Session and no
+ * cast token. Definitions are public once the Election is frozen; the terminal preloads this so
+ * that enabling a ballot only has to fetch the cast token.
+ */
+export async function fetchBoothDefinition(
+  deps: Pick<CastingDeps, "db">,
+  terminal: AuthenticatedTerminal,
+): Promise<(BallotDefinitionView & Record<string, unknown>) | null> {
+  if (terminal.type !== "voting") return null;
+  try {
+    return await withTransaction(deps.db, (tx) =>
+      loadDefinition(tx, terminal.electionId, terminal.boothId),
+    );
+  } catch {
+    return null;
+  }
+}
+
 export type PendingBallot =
   | { status: "none" }
   | { status: "forbidden" }

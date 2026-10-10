@@ -26,6 +26,32 @@ const eslintConfig = defineConfig([
       "no-console": "error",
     },
   },
+  // The Voting Terminal holds a voter's choices in memory only. Any browser storage under
+  // /terminal could outlive the ballot, so the APIs are banned there outright.
+  {
+    files: ["src/app/terminal/**/*.{ts,tsx}"],
+    ignores: ["**/*.test.ts", "**/*.test.tsx"],
+    rules: {
+      "no-restricted-globals": [
+        "error",
+        ...["localStorage", "sessionStorage", "indexedDB", "caches"].map((name) => ({
+          name,
+          message: "The Voting Terminal must not use browser storage: choices stay in memory only.",
+        })),
+      ],
+      "no-restricted-properties": [
+        "error",
+        ...["window", "globalThis", "self"].flatMap((object) =>
+          ["localStorage", "sessionStorage", "indexedDB", "caches"].map((property) => ({
+            object,
+            property,
+            message:
+              "The Voting Terminal must not use browser storage: choices stay in memory only.",
+          })),
+        ),
+      ],
+    },
+  },
 ]);
 
 export default eslintConfig;

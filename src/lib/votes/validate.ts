@@ -1,5 +1,3 @@
-import { z } from "zod";
-
 /**
  * Ballot validation, shared by the server (authoritative), the voting terminal (to guide the
  * voter) and the public verifier. Pure: no database, no I/O.
@@ -25,18 +23,36 @@ export interface Answer {
   nota?: boolean;
 }
 
-/** Wire format. Strict: unknown fields are an error, not ignored. */
-export const answersSchema = z
-  .array(
-    z
-      .object({
-        postId: z.string().min(1).max(64),
-        candidateIds: z.array(z.string().min(1).max(64)).max(100).optional(),
-        nota: z.boolean().optional(),
-      })
-      .strict(),
-  )
-  .max(100);
+/**
+ * Wire format check, strict: unknown fields are an error, not ignored. Hand-written (no schema
+ * library) because the Voting Terminal bundles this module and must stay small.
+ */
+function parseAnswers(raw: unknown): Answer[] | null {
+  if (!Array.isArray(raw) || raw.length > 100) return null;
+  const idOk = (v: unknown): v is string =>
+    typeof v === "string" && v.length >= 1 && v.length <= 64;
+  const out: Answer[] = [];
+  for (const item of raw) {
+    if (typeof item !== "object" || item === null || Array.isArray(item)) return null;
+    const entry = item as Record<string, unknown>;
+    if (Object.keys(entry).some((k) => k !== "postId" && k !== "candidateIds" && k !== "nota")) {
+      return null;
+    }
+    if (!idOk(entry.postId)) return null;
+    const answer: Answer = { postId: entry.postId };
+    if (entry.candidateIds !== undefined) {
+      const ids = entry.candidateIds;
+      if (!Array.isArray(ids) || ids.length > 100 || !ids.every(idOk)) return null;
+      answer.candidateIds = ids;
+    }
+    if (entry.nota !== undefined) {
+      if (typeof entry.nota !== "boolean") return null;
+      answer.nota = entry.nota;
+    }
+    out.push(answer);
+  }
+  return out;
+}
 
 export type ValidationCode =
   | "malformed"
@@ -69,9 +85,8 @@ export function validateBallot(
   definition: BallotDefinitionView,
   rawAnswers: unknown,
 ): BallotValidation {
-  const parsed = answersSchema.safeParse(rawAnswers);
-  if (!parsed.success) return { ok: false, issues: [{ code: "malformed" }] };
-  const answers = parsed.data;
+  const answers = parseAnswers(rawAnswers);
+  if (!answers) return { ok: false, issues: [{ code: "malformed" }] };
 
   const issues: ValidationIssue[] = [];
   const posts = new Map(definition.posts.map((p) => [p.post_id, p]));

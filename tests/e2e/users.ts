@@ -38,6 +38,17 @@ export interface E2eUsers {
     candidateIds: string[];
     presidingOfficer: E2eUser;
   };
+  /**
+   * A really-frozen, Polling Open Election with NOTA enabled: President (1 seat) and Council
+   * (2 seats), three Candidates each, one booth, for the Voting Terminal spec.
+   */
+  voting: {
+    electionId: string;
+    boothId: string;
+    president: { id: string; candidateIds: string[] };
+    council: { id: string; candidateIds: string[] };
+    presidingOfficer: E2eUser;
+  };
   superAdmin: E2eUser;
   returningOfficer: E2eUser;
   presidingOfficer: E2eUser;

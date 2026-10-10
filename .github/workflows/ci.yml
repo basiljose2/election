@@ -28,6 +28,8 @@ jobs:
       - run: npm run format:check
       - run: npm test
       - run: npm run build
+      - name: Voting Terminal bundle budget (150 KB gzipped)
+        run: npm run check:terminal-bundle
 
   database-and-e2e:
     name: Database, integration and end-to-end tests

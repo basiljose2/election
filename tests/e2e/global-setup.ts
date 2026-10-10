@@ -38,6 +38,16 @@ export default async function globalSetup() {
   const masterBoothId = randomUUID();
   const masterPostId = randomUUID();
   const masterCandidateIds = [randomUUID(), randomUUID(), randomUUID()];
+  const votingElectionId = randomUUID();
+  const votingBoothId = randomUUID();
+  const votingPresident = {
+    id: randomUUID(),
+    candidateIds: [randomUUID(), randomUUID(), randomUUID()],
+  };
+  const votingCouncil = {
+    id: randomUUID(),
+    candidateIds: [randomUUID(), randomUUID(), randomUUID()],
+  };
 
   for (const [id, name] of [
     [electionId, "E2E election"],
@@ -54,6 +64,34 @@ export default async function globalSetup() {
     "insert into public.booths (id, election_id, name, location) values ($1, $2, 'Terminals booth', 'Hall')",
     [terminalsBoothId, terminalsElectionId],
   );
+  // The voting-terminal fixture: two Posts (1 and 2 seats, three Candidates each) and NOTA.
+  await db.query(
+    "insert into public.elections (id, name, polling_date, nota_enabled) values ($1, $2, current_date, true)",
+    [votingElectionId, `E2E voting election ${run}`],
+  );
+  await db.query(
+    "insert into public.booths (id, election_id, name, location) values ($1, $2, 'Voting booth', 'Hall')",
+    [votingBoothId, votingElectionId],
+  );
+  for (const [order, post, name, seats] of [
+    [0, votingPresident, "President", 1],
+    [1, votingCouncil, "Council", 2],
+  ] as const) {
+    await db.query(
+      "insert into public.posts (id, election_id, name, display_order, seats) values ($1, $2, $3, $4, $5)",
+      [post.id, votingElectionId, name, order, seats],
+    );
+    for (const [i, id] of post.candidateIds.entries()) {
+      await db.query(
+        "insert into public.candidates (id, election_id, post_id, name, sort_order, symbol_text) values ($1, $2, $3, $4, $5, $6)",
+        [id, votingElectionId, post.id, `${name} candidate ${i}`, i, `S${order}${i}`],
+      );
+    }
+    await db.query(
+      "insert into public.booth_posts (election_id, booth_id, post_id) values ($1, $2, $3)",
+      [votingElectionId, votingBoothId, post.id],
+    );
+  }
   await db.query(
     "insert into public.booths (id, election_id, name, location) values ($1, $2, 'Master booth', 'Hall')",
     [masterBoothId, masterElectionId],
@@ -140,6 +178,16 @@ export default async function globalSetup() {
         boothId: masterBoothId,
       }),
     },
+    voting: {
+      electionId: votingElectionId,
+      boothId: votingBoothId,
+      president: votingPresident,
+      council: votingCouncil,
+      presidingOfficer: await staff("voting-po", "presiding_officer", {
+        electionId: votingElectionId,
+        boothId: votingBoothId,
+      }),
+    },
     superAdmin: await staff("sa", "super_admin", {}),
     returningOfficer: await staff("ro", "returning_officer", { electionId }),
     presidingOfficer: await staff("po", "presiding_officer", { electionId, boothId }),
@@ -153,20 +201,18 @@ export default async function globalSetup() {
   // The master fixture goes through the real freeze (Ballot Definitions, signing key), then
   // Polling Open. The freeze command is server-only code, so it runs in its own process.
   const masterRo = await staff("master-ro", "returning_officer", { electionId: masterElectionId });
-  execFileSync(
-    "npx",
-    [
-      "tsx",
-      "--conditions=react-server",
-      "scripts/e2e-freeze.ts",
-      masterElectionId,
-      masterRo.userId,
-    ],
-    { stdio: "inherit", shell: process.platform === "win32" },
-  );
-  await db.query("update public.elections set status = 'polling_open' where id = $1", [
-    masterElectionId,
-  ]);
+  const votingRo = await staff("voting-ro", "returning_officer", { electionId: votingElectionId });
+  for (const [election, officer] of [
+    [masterElectionId, masterRo],
+    [votingElectionId, votingRo],
+  ] as const) {
+    execFileSync(
+      "npx",
+      ["tsx", "--conditions=react-server", "scripts/e2e-freeze.ts", election, officer.userId],
+      { stdio: "inherit", shell: process.platform === "win32" },
+    );
+    await db.query("update public.elections set status = 'polling_open' where id = $1", [election]);
+  }
   await db.end();
 
   mkdirSync(path.dirname(USERS_FILE), { recursive: true });

@@ -63,6 +63,8 @@ test("a Presiding Officer registers a Master Terminal and pairs a kiosk with a o
 
   // ---- The kiosk becomes the booth's Voting Terminal and stays locked.
   await expect(kiosk).toHaveURL(/\/terminal$/);
+  await expect(kiosk.getByTestId("terminal-not-activated")).toBeVisible();
+  await kiosk.getByRole("button", { name: "Activate" }).click();
   await expect(kiosk.getByTestId("terminal-locked")).toBeVisible();
   await expect(kiosk.getByTestId("terminal-connection")).toHaveText("Connected");
 
@@ -124,30 +126,38 @@ test("with real-time blocked, the Voting Terminal unlocks within 3 seconds by po
   await kiosk.getByRole("button", { name: "Pair this device" }).click();
   await expect(master.getByTestId("pending-device-id")).toBeVisible();
   await master.getByRole("button", { name: "Confirm" }).click();
-  await expect(kiosk.getByTestId("terminal-locked")).toBeVisible();
+  await expect(kiosk.getByTestId("terminal-not-activated")).toBeVisible();
 
   // Now cut real-time for this kiosk: every WebSocket is closed immediately.
   await kiosk.routeWebSocket(/.*/, (ws) => void ws.close());
   await kiosk.reload();
+  await expect(kiosk.getByRole("button", { name: "Activate" })).toBeVisible();
+  await kiosk.getByRole("button", { name: "Activate" }).click();
   await expect(kiosk.getByTestId("terminal-connection")).toHaveText("Reconnecting…");
   await expect(kiosk.getByTestId("terminal-locked")).toBeVisible();
   await kiosk.waitForTimeout(500); // (the page never goes network-idle while polling)
 
-  // A Ballot Session becomes pending (inserted directly: issuing is not wired to a screen yet).
+  // A Ballot Session becomes pending (inserted directly, bound to the kiosk). This election has
+  // no Ballot Definition, so nothing can be shown; what matters here is that the polling
+  // fallback notices within 3 seconds and the kiosk asks for its ballot.
   try {
     const started = Date.now();
+    const asked = kiosk.waitForRequest((r) => r.url().includes("/terminal/api/ballot"), {
+      timeout: 3_000,
+    });
     await db.query(
-      `with t as (
-         insert into public.terminals (election_id, booth_id, type, status, credential_hash, revoked_at, revoked_reason)
-         values ($1, $2, 'voting', 'revoked', encode(sha256(gen_random_uuid()::text::bytea), 'hex'), now(), 'fixture')
-         returning id)
-       insert into public.ballot_sessions (election_id, booth_id, terminal_id, is_mock, issued_by)
-       select $1, $2, t.id, false, $3 from t`,
+      `insert into public.ballot_sessions (election_id, booth_id, terminal_id, is_mock, issued_by)
+       select $1, $2, t.id, false, $3 from public.terminals t
+        where t.booth_id = $2 and t.type = 'voting' and t.status = 'active'`,
       [terminals.electionId, terminals.boothId, terminals.presidingOfficer.userId],
     );
-    await baseExpect(kiosk.getByTestId("terminal-unlocked")).toBeVisible({ timeout: 3_000 });
+    await asked;
     expect(Date.now() - started).toBeLessThan(3_000);
   } finally {
+    await db.query(
+      "update public.ballot_sessions set status = 'cancelled', finished_at = now(), cancel_reason = 'terminal_fault' where booth_id = $1 and status = 'pending'",
+      [terminals.boothId],
+    );
     await db.end();
   }
   await Promise.all([masterContext.close(), kioskContext.close()]);

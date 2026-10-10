@@ -56,7 +56,9 @@ async function pairKiosk(browser: Browser) {
   await kiosk.getByRole("button", { name: "Pair this device" }).click();
   await expect(master.getByTestId("pending-device-id")).toBeVisible();
   await master.getByRole("button", { name: "Confirm" }).click();
-  await expect(kiosk.getByTestId("terminal-locked")).toBeVisible();
+  // Left unactivated on purpose: it still sends heartbeats, but never fetches the ballot, so
+  // the spec's own API casts cannot race the screen for the single-use cast token.
+  await expect(kiosk.getByTestId("terminal-not-activated")).toBeVisible();
   await expect(master.getByTestId("voting-terminal-online")).toHaveText("online", {
     timeout: 30_000,
   });

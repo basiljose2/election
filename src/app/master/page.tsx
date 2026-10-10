@@ -5,7 +5,9 @@ import { requireActorForPage } from "@/lib/auth/current-actor";
 import { getPool } from "@/lib/db/pool";
 import { TERMINAL_COOKIES, verifyTerminalCredential } from "@/lib/terminals/credentials";
 import { registerMasterAction } from "./actions";
+import { loadBoothTally } from "@/lib/votes/tally";
 import { MasterPanel } from "./master-panel";
+import { BoothTallyScreen } from "./tally-screen";
 
 export const metadata: Metadata = { title: "Master Terminal · Campus EVM" };
 
@@ -31,6 +33,30 @@ export default async function MasterPage({ searchParams }: PageProps<"/master">)
   });
 
   if (!check.ok && check.reason === "booth_closed") {
+    // The booth's own Master Terminal (and only that device) shows the Booth Tally.
+    if (check.known?.type === "master" && check.known.boothId === po.boothId) {
+      const tally = await loadBoothTally(getPool(), po.boothId);
+      if (tally) {
+        const { rows } = await getPool().query<{ election_name: string; booth_name: string }>(
+          `select e.name as election_name, b.name as booth_name
+             from public.booths b join public.elections e on e.id = b.election_id
+            where b.id = $1`,
+          [po.boothId],
+        );
+        const posts = await getPool().query<{ id: string; name: string }>(
+          "select id, name from public.posts where election_id = $1",
+          [tally.electionId],
+        );
+        return (
+          <BoothTallyScreen
+            tally={tally}
+            boothName={rows[0]?.booth_name ?? "Booth"}
+            electionName={rows[0]?.election_name ?? ""}
+            postNames={Object.fromEntries(posts.rows.map((p) => [p.id, p.name]))}
+          />
+        );
+      }
+    }
     return (
       <PageShell title="Master Terminal">
         <Notice tone="info">The poll at this booth is closed.</Notice>

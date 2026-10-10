@@ -1,3 +1,4 @@
+import { ensureElectionSigningKey, parseMasterKey } from "@/lib/votes/keys";
 import { randomBytes, randomUUID } from "node:crypto";
 import { afterAll, describe, expect, it } from "vitest";
 import { appendAuditEvent } from "@/lib/audit/append";
@@ -96,6 +97,12 @@ async function world(
   await admin.query(
     "update public.elections set status = 'frozen', frozen_at = now(), freeze_count = 1 where id = $1",
     [electionId],
+  );
+  // Every frozen Election has a signing key; closing a booth signs its Booth Tally with it.
+  await ensureElectionSigningKey(
+    admin,
+    electionId,
+    parseMasterKey(process.env.VOTE_SIGNING_MASTER_KEY),
   );
   await advanceElection(electionId, status);
   if (terminals !== "none") {
@@ -362,7 +369,7 @@ describe("Election transitions", () => {
     expect(new Set(bus.published.map((p) => p.boothId))).toEqual(new Set([w.boothId, second]));
   });
 
-  it("declare results fails closed until the results guard is registered", async () => {
+  it("declare results fails closed until the reconciliation and results guards are registered", async () => {
     const w = await world({ status: "polling_completed" });
     await expectError(
       executeCommand(commands.declareResults, { electionId: w.electionId }, gw(w.ro)),
@@ -371,7 +378,11 @@ describe("Election transitions", () => {
     );
     const ready = createLifecycleCommands({
       publisher: bus,
-      guards: { ...guards, resultsReady: async () => pass() },
+      guards: {
+        ...guards,
+        reconciliationPassed: async () => pass(),
+        resultsReady: async () => pass(),
+      },
     });
     await executeCommand(ready.declareResults, { electionId: w.electionId }, gw(w.ro));
     expect(await electionStatus(w.electionId)).toBe("results_declared");
@@ -688,7 +699,10 @@ describe("booth transitions", () => {
         detail: {
           action: "force_close_poll",
           reason: "PO unwell",
-          hooks: [{ cancelled_ballot_sessions: 1 }],
+          hooks: [
+            { cancelled_ballot_sessions: 1 },
+            { booth_tally: { tally_status: "pass", failed_checks: [] } },
+          ],
         },
       });
     });

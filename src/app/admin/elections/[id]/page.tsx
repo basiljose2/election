@@ -7,6 +7,7 @@ import { requireActorForPage } from "@/lib/auth/current-actor";
 import { recordDeniedAttempt } from "@/lib/commands/gateway";
 import { getPool } from "@/lib/db/pool";
 import { candidateImageUrl } from "@/lib/media/store";
+import { listFailedTallies } from "@/lib/votes/tally";
 import { canConfigure, listElections, loadSetupView, type PostView } from "@/lib/setup/queries";
 import {
   clearCandidateMediaAction,
@@ -85,6 +86,7 @@ export default async function ElectionSetupPage({
   const ok = first(query.ok);
   const error = first(query.error);
   const postName = new Map(posts.map((p) => [p.id, p.name]));
+  const failedTallies = isRo ? await listFailedTallies(getPool(), electionId) : [];
 
   return (
     <PageShell title={election.name}>
@@ -97,6 +99,29 @@ export default async function ElectionSetupPage({
         Status: <strong>{election.status === "draft" ? "Draft" : "Frozen"}</strong> · polling{" "}
         {election.polling_date} · NOTA {election.nota_enabled ? "enabled" : "disabled"}
       </p>
+      {failedTallies.length > 0 && (
+        <div role="alert" data-testid="failed-tally-alert" className="flex flex-col gap-2">
+          {failedTallies.map((t) => (
+            <Notice key={t.boothId} tone="error">
+              Booth &quot;{t.boothName}&quot; closed with a FAILED Booth Tally (
+              {t.failedChecks.map((c) => c.replace(/_/g, " ")).join(", ")}). Results for the Posts
+              it carries will be withheld.{" "}
+              <Link className="underline" href={`/admin/elections/${electionId}/reconciliation`}>
+                Open the reconciliation report
+              </Link>
+            </Notice>
+          ))}
+        </div>
+      )}
+      {election.status !== "draft" && (
+        <Link
+          href={`/admin/elections/${electionId}/reconciliation`}
+          className="text-sm underline"
+          data-testid="reconciliation-link"
+        >
+          Reconciliation report
+        </Link>
+      )}
       {!isRo && (
         <Notice tone="info">
           Only this election&apos;s Returning Officer can change its setup.

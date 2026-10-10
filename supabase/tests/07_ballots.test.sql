@@ -2,7 +2,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 grant app_server, app_migrator to postgres with set true;
 grant usage on schema extensions to app_server, app_migrator;
-select plan(43);
+select plan(50);
 
 insert into auth.users (id, email) values ('11111111-1111-1111-1111-111111111111', 'po@test.local');
 insert into public.staff (user_id, email, display_name)
@@ -235,11 +235,42 @@ update public.booth_states set state = 'open' where booth_id = 'd0000000-0000-00
 update public.booth_states set state = 'closed' where booth_id = 'd0000000-0000-0000-0000-000000000001';
 set local role app_server;
 select is(
-  (select ballot_rows from public.booth_integrity_digest('d0000000-0000-0000-0000-000000000001')),
+  (public.booth_integrity_digest('d0000000-0000-0000-0000-000000000001') ->> 'selection_rows')::bigint,
   2::bigint, 'the digest of a closed booth counts its real Vote Selections only');
 select matches(
-  (select digest from public.booth_integrity_digest('d0000000-0000-0000-0000-000000000001')),
-  '^[0-9a-f]{64}$', 'the digest is a SHA-256 value, with no per-candidate counts');
+  public.booth_integrity_digest('d0000000-0000-0000-0000-000000000001') ->> 'merkle_root',
+  '^[0-9a-f]{64}$', 'the digest carries a SHA-256 Merkle root, with no per-candidate counts');
+select is(
+  (public.booth_integrity_digest('d0000000-0000-0000-0000-000000000001') ->> 'bad_signatures')::int,
+  2, 'the digest verifies signatures: the fixture rows carry placeholder signatures');
+select ok(
+  (public.booth_integrity_digest('d0000000-0000-0000-0000-000000000001')::text !~ 'candidate|nota'),
+  'the digest document names no candidate or NOTA counts');
+
+-- ---- Booth Tallies and reconciliation runs are append-only
+select lives_ok(
+  $$ insert into public.booth_tallies (election_id, booth_id, status, canonical_json, tally_hash, signature)
+     values ('e0000000-0000-0000-0000-00000000000a', 'd0000000-0000-0000-0000-000000000001', 'pass',
+             '{}', encode(sha256(convert_to('{}', 'UTF8')), 'hex'), repeat('A', 86)) $$,
+  'app_server can store a Booth Tally');
+select throws_ok(
+  $$ update public.booth_tallies set status = 'failed' $$,
+  '42501', null, 'app_server cannot UPDATE a Booth Tally');
+select throws_ok(
+  $$ insert into public.booth_tallies (election_id, booth_id, status, canonical_json, tally_hash, signature)
+     values ('e0000000-0000-0000-0000-00000000000a', 'd0000000-0000-0000-0000-000000000001', 'pass',
+             '{}', encode(sha256(convert_to('{}', 'UTF8')), 'hex'), repeat('A', 86)) $$,
+  '23505', null, 'a booth has exactly one Booth Tally');
+reset role;
+select throws_ok(
+  $$ delete from public.booth_tallies $$,
+  'P0001', null, 'even the owner cannot delete a Booth Tally (trigger)');
+insert into public.reconciliation_runs (election_id, election_checks_passed, report)
+values ('e0000000-0000-0000-0000-00000000000a', true, '{}');
+select throws_ok(
+  $$ update public.reconciliation_runs set election_checks_passed = false $$,
+  'P0001', null, 'even the owner cannot change a reconciliation run (trigger)');
+set local role app_server;
 
 -- app_server is not a member of the reader role, so it cannot become it.
 select is_empty(

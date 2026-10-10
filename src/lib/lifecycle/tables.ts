@@ -40,6 +40,8 @@ export type GuardName =
   | "noPendingBallot"
   | "mockBallotCast"
   | "zeroRealBallots"
+  // booth-close-reconciliation
+  | "reconciliationPassed"
   // results-dashboard
   | "resultsReady";
 
@@ -116,7 +118,7 @@ export const ELECTION_TRANSITIONS: readonly TransitionRow<ElectionState, Electio
     to: "results_declared",
     action: "declare_results",
     allowedRoles: ["returning_officer"],
-    guards: ["resultsReady"],
+    guards: ["reconciliationPassed", "resultsReady"],
     requiresReauth: true,
     owner: "engine",
   },

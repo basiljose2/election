@@ -168,10 +168,14 @@ export function createBallotCommands(publisher: SignalPublisher) {
           where id = $1`,
         [session.id, ctx.now(), input.reason, input.note || null],
       );
-      await ctx.tx.query(
-        "update public.booth_counters set ballots_cancelled = ballots_cancelled + 1 where booth_id = $1",
-        [input.boothId],
-      );
+      // The counter is the real count (it goes into the signed Booth Tally): a cancelled mock
+      // ballot is not counted.
+      if (!session.is_mock) {
+        await ctx.tx.query(
+          "update public.booth_counters set ballots_cancelled = ballots_cancelled + 1 where booth_id = $1",
+          [input.boothId],
+        );
+      }
       await signalAfterCommit(ctx, publisher, input.boothId, "ballot-cancelled");
       return {
         result: { sessionId: session.id },

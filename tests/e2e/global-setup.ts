@@ -177,6 +177,10 @@ export default async function globalSetup() {
         electionId: masterElectionId,
         boothId: masterBoothId,
       }),
+      returningOfficer: await staff("master-ro", "returning_officer", {
+        electionId: masterElectionId,
+      }),
+      observer: await staff("master-observer", "observer", { electionId: masterElectionId }),
     },
     voting: {
       electionId: votingElectionId,
@@ -200,10 +204,9 @@ export default async function globalSetup() {
 
   // The master fixture goes through the real freeze (Ballot Definitions, signing key), then
   // Polling Open. The freeze command is server-only code, so it runs in its own process.
-  const masterRo = await staff("master-ro", "returning_officer", { electionId: masterElectionId });
   const votingRo = await staff("voting-ro", "returning_officer", { electionId: votingElectionId });
   for (const [election, officer] of [
-    [masterElectionId, masterRo],
+    [masterElectionId, users.master.returningOfficer],
     [votingElectionId, votingRo],
   ] as const) {
     execFileSync(

@@ -326,9 +326,24 @@ test("closing is blocked while a ballot is pending, and needs CLOSE and the pass
   await expect(confirm).toBeEnabled();
   await confirm.click();
 
-  // A Closed booth rejects terminal credentials: the screen says so instead of offering controls.
-  await expect(master.getByTestId("poll-closed")).toBeVisible();
+  // A Closed booth rejects terminal credentials, so the screen switches to the Booth Tally.
+  const tally = master.getByTestId("booth-tally");
+  await expect(tally).toBeVisible();
+  await expect(master.getByTestId("tally-cast")).toHaveText("1");
+  await expect(master.getByTestId("tally-cancelled")).toHaveText("1");
+  await expect(master.getByTestId("tally-posts")).toContainText("President: 1");
+  const full = (await master.getByTestId("tally-hash-full").textContent())!.trim();
+  expect(full).toMatch(/^[0-9a-f]{64}$/);
+  await expect(master.getByTestId("tally-hash-short")).toHaveText(
+    `${full.slice(0, 4)}-${full.slice(4, 8)}`,
+  );
+  await expect(master.getByTestId("tally-qr").locator("svg")).toBeVisible();
+  await expect(master.getByTestId("tally-failed")).toHaveCount(0);
+  await expect(master.getByRole("button", { name: "Print" })).toBeVisible();
   await expect(ballotButton()).toHaveCount(0);
+  expect(await master.locator("body").innerText()).not.toContain("Master candidate");
+
+  // It is the same after a reload, and shows no controls.
   await master.reload();
-  await expect(master.getByText("The poll at this booth is closed.")).toBeVisible();
+  await expect(master.getByTestId("tally-hash-full")).toHaveText(full);
 });

@@ -25,6 +25,10 @@ export interface VotingWorld {
   masterTerminal: AuthenticatedTerminal;
   voting: AuthenticatedTerminal;
   publicKey: string;
+  /** Set with `unmappedPost`: a contested Post of the Election that this booth is NOT mapped to. */
+  unmapped: { postId: string; candidateId: string } | null;
+  /** Set with `unmappedPost`: the second booth (it carries the unmapped Post) and its officer. */
+  other: { boothId: string; po: Actor } | null;
 }
 
 export async function buildVotingWorld(
@@ -35,6 +39,8 @@ export async function buildVotingWorld(
     election?: "frozen" | "polling_open";
     online?: boolean;
     now?: Date;
+    /** Adds a contested Post (two Candidates) that is not mapped to the booth. */
+    unmappedPost?: boolean;
   } = {},
 ): Promise<VotingWorld> {
   const { nota = true, booth = "open", election = "polling_open", online = true } = options;
@@ -70,11 +76,42 @@ export async function buildVotingWorld(
     "insert into public.booths (id, election_id, name, location) values ($1, $2, 'Main Hall', 'A')",
     [boothId, electionId],
   );
+  let unmapped: VotingWorld["unmapped"] = null;
+  let other: VotingWorld["other"] = null;
+  if (options.unmappedPost) {
+    unmapped = { postId: randomUUID(), candidateId: randomUUID() };
+    await admin.query(
+      "insert into public.posts (id, election_id, name, display_order, seats) values ($1, $2, 'Unmapped', 9, 1)",
+      [unmapped.postId, electionId],
+    );
+    for (const [i, id] of [unmapped.candidateId, randomUUID()].entries()) {
+      await admin.query(
+        "insert into public.candidates (id, election_id, post_id, name, sort_order) values ($1, $2, $3, $4, $5)",
+        [id, electionId, unmapped.postId, `Unmapped ${i}`, i],
+      );
+    }
+  }
   for (const postId of [presidentId, councilId]) {
     await admin.query(
       "insert into public.booth_posts (election_id, booth_id, post_id) values ($1, $2, $3)",
       [electionId, boothId, postId],
     );
+  }
+  if (unmapped) {
+    // Every Post must be mapped somewhere to freeze: another booth carries it.
+    const otherBooth = randomUUID();
+    await admin.query(
+      "insert into public.booths (id, election_id, name, location) values ($1, $2, 'Other Hall', 'B')",
+      [otherBooth, electionId],
+    );
+    await admin.query(
+      "insert into public.booth_posts (election_id, booth_id, post_id) values ($1, $2, $3)",
+      [electionId, otherBooth, unmapped.postId],
+    );
+    const otherPo = await createStaffFixture(admin, [
+      { role: "presiding_officer", electionId, boothId: otherBooth },
+    ]);
+    other = { boothId: otherBooth, po: actorFor(otherPo) };
   }
   const po = actorFor(
     await createStaffFixture(admin, [{ role: "presiding_officer", electionId, boothId }]),
@@ -148,6 +185,8 @@ export async function buildVotingWorld(
       deviceId: "AB12",
     },
     publicKey: key.rows[0]!.public_key,
+    unmapped,
+    other,
   };
 }
 

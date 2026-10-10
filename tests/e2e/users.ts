@@ -37,6 +37,8 @@ export interface E2eUsers {
     postId: string;
     candidateIds: string[];
     presidingOfficer: E2eUser;
+    returningOfficer: E2eUser;
+    observer: E2eUser;
   };
   /**
    * A really-frozen, Polling Open Election with NOTA enabled: President (1 seat) and Council

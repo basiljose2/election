@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useActionState, useEffect, useState } from "react";
 import { Button, Notice } from "@/components/ui";
 import { useTerminalState } from "@/lib/signals/use-terminal-state";
 import {
@@ -53,6 +54,11 @@ export function MasterPanel({ boothId }: { boothId: string }) {
   // A Closed booth rejects every terminal credential, so after closing the poll the state
   // endpoint answers 401. Remember that this device closed it, to say so.
   const [closedHere, setClosedHere] = useState(false);
+  const router = useRouter();
+  // Once closed, the server renders the Booth Tally in place of the controls.
+  useEffect(() => {
+    if (closedHere) router.refresh();
+  }, [closedHere, router]);
 
   // A dialog is never shown behind the lock (and is dropped on unlock).
   const visibleDialog = locked ? null : dialog;

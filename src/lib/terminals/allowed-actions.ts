@@ -74,6 +74,7 @@ const GUARD_CHECKS: Record<GuardName, Check> = {
     f.realBallotsCast === 0 ? null : "Real ballots have already been cast at this booth",
   // Booth-level actions never depend on these.
   allBoothsClosed: () => null,
+  reconciliationPassed: () => null,
   resultsReady: () => null,
 };
 

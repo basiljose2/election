@@ -32,6 +32,9 @@ export default async function StaffHome() {
         {(superAdminGrant(actor) || actor.roles.some((r) => r.electionId)) && (
           <Link href="/admin/elections">Elections</Link>
         )}
+        {actor.roles.some((r) => r.role === "presiding_officer") && (
+          <Link href="/master">Master Terminal</Link>
+        )}
         {superAdminGrant(actor) && <Link href="/admin/staff">Manage staff</Link>}
       </nav>
       <form action={signOutAction}>

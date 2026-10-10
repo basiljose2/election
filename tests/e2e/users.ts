@@ -25,6 +25,8 @@ export interface E2eUsers {
     presidingOfficer1: E2eUser;
     presidingOfficer2: E2eUser;
   };
+  /** A Frozen election with one booth and its Presiding Officer, for terminal pairing. */
+  terminals: { electionId: string; boothId: string; presidingOfficer: E2eUser };
   superAdmin: E2eUser;
   returningOfficer: E2eUser;
   presidingOfficer: E2eUser;

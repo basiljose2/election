@@ -23,21 +23,31 @@ export default async function globalSetup() {
   const auth = createClient(url, secret, { auth: { persistSession: false } }).auth.admin;
   const db = new Pool({ connectionString: adminDb, max: 1 });
 
+  // All e2e clients share one address; start each run without earlier runs' failed attempts.
+  await db.query("delete from public.pairing_attempts");
+
   const run = Date.now().toString(36);
   const electionId = randomUUID();
   const boothId = randomUUID();
   const spareBoothId = randomUUID();
   const setupElectionId = randomUUID();
+  const terminalsElectionId = randomUUID();
+  const terminalsBoothId = randomUUID();
 
   for (const [id, name] of [
     [electionId, "E2E election"],
     [setupElectionId, "E2E setup election"],
+    [terminalsElectionId, "E2E terminals election"],
   ]) {
     await db.query(
       "insert into public.elections (id, name, polling_date) values ($1, $2, current_date)",
       [id, `${name} ${run}`],
     );
   }
+  await db.query(
+    "insert into public.booths (id, election_id, name, location) values ($1, $2, 'Terminals booth', 'Hall')",
+    [terminalsBoothId, terminalsElectionId],
+  );
   for (const [id, name] of [
     [boothId, "E2E booth"],
     [spareBoothId, "E2E spare booth"],
@@ -88,10 +98,23 @@ export default async function globalSetup() {
       presidingOfficer1: await staff("setup-po1", null, {}),
       presidingOfficer2: await staff("setup-po2", null, {}),
     },
+    terminals: {
+      electionId: terminalsElectionId,
+      boothId: terminalsBoothId,
+      presidingOfficer: await staff("term-po", "presiding_officer", {
+        electionId: terminalsElectionId,
+        boothId: terminalsBoothId,
+      }),
+    },
     superAdmin: await staff("sa", "super_admin", {}),
     returningOfficer: await staff("ro", "returning_officer", { electionId }),
     presidingOfficer: await staff("po", "presiding_officer", { electionId, boothId }),
   };
+  // Terminals can be paired once the election is Frozen (done last: setup tables are Draft-only).
+  await db.query(
+    "update public.elections set status = 'frozen', frozen_at = now(), freeze_count = 1 where id = $1",
+    [terminalsElectionId],
+  );
   await db.end();
 
   mkdirSync(path.dirname(USERS_FILE), { recursive: true });

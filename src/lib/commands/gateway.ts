@@ -24,6 +24,8 @@ export interface CommandContext {
   actor: Actor;
   /** The role assignment that authorized this command. */
   grant: RoleAssignment;
+  /** The gateway's clock (injectable in tests). */
+  now(): Date;
   /** Runs after the transaction commits (e.g. calls to external services). */
   onCommit(fn: () => Promise<void>): void;
   /** Runs if the transaction rolls back (compensate external side effects). */
@@ -125,6 +127,7 @@ export async function executeCommand<S extends z.ZodType, O>(
         tx,
         actor,
         grant,
+        now: deps.now,
         onCommit: (fn) => commitHooks.push(fn),
         onRollback: (fn) => rollbackHooks.push(fn),
       };

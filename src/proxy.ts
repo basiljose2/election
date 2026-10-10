@@ -3,6 +3,27 @@ import { NextResponse, type NextRequest } from "next/server";
 import { AUTH_COOKIE_OPTIONS } from "@/lib/auth/cookies";
 import { buildCsp, createNonce, SECURITY_HEADERS } from "@/lib/security/headers";
 
+/** WebSocket (and HTTP) origins of the real-time provider. */
+function realtimeOrigins(supabaseUrl: string | undefined, extra: string | undefined): string[] {
+  const origins: string[] = [];
+  if (supabaseUrl) {
+    try {
+      const url = new URL(supabaseUrl);
+      origins.push(url.origin, `${url.protocol === "https:" ? "wss:" : "ws:"}//${url.host}`);
+    } catch {
+      // An invalid URL is reported by the server environment check, not here.
+    }
+  }
+  if (extra)
+    origins.push(
+      ...extra
+        .split(",")
+        .map((o) => o.trim())
+        .filter(Boolean),
+    );
+  return origins;
+}
+
 interface PendingCookie {
   name: string;
   value: string;
@@ -17,9 +38,19 @@ interface PendingCookie {
  */
 export async function proxy(request: NextRequest) {
   const nonce = createNonce();
+  // Terminal screens (and only those) open the real-time connection from the browser.
+  const path = request.nextUrl.pathname;
+  const isTerminalPage =
+    path === "/master" ||
+    path.startsWith("/master/") ||
+    path === "/terminal" ||
+    path.startsWith("/terminal/");
   const csp = buildCsp(nonce, {
     dev: process.env.NODE_ENV === "development",
     upgradeInsecure: Boolean(process.env.VERCEL_ENV),
+    connectOrigins: isTerminalPage
+      ? realtimeOrigins(process.env.SUPABASE_URL, process.env.ABLY_REALTIME_ORIGINS)
+      : [],
   });
 
   const requestHeaders = new Headers(request.headers);

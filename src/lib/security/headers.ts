@@ -23,7 +23,7 @@ export const STATIC_ASSET_CSP = "default-src 'none'; frame-ancestors 'none'";
 
 export function buildCsp(
   nonce: string,
-  options: { dev: boolean; upgradeInsecure: boolean },
+  options: { dev: boolean; upgradeInsecure: boolean; connectOrigins?: readonly string[] },
 ): string {
   const directives = [
     "default-src 'self'",
@@ -31,7 +31,7 @@ export function buildCsp(
     `style-src 'self' 'nonce-${nonce}'${options.dev ? " 'unsafe-inline'" : ""}`,
     "img-src 'self' data:",
     "font-src 'self'",
-    `connect-src 'self'${options.dev ? " ws:" : ""}`,
+    `connect-src 'self'${options.dev ? " ws:" : ""}${(options.connectOrigins ?? []).map((o) => ` ${o}`).join("")}`,
     "object-src 'none'",
     "base-uri 'none'",
     "form-action 'self'",

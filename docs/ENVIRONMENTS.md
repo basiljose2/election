@@ -22,14 +22,18 @@ Importing `src/lib/env/server.ts` from a Client Component fails the build
 
 ## Variables
 
-| Name                       | Purpose                                                                                                                              |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `DATABASE_URL`             | Postgres as `app_server`. Hosted: the transaction pooler URL (port 6543) with user `app_server.<project-ref>` and `sslmode=require`. |
-| `SUPABASE_URL`             | Supabase API URL.                                                                                                                    |
-| `SUPABASE_PUBLISHABLE_KEY` | Used by the server for Supabase Auth sign-in and MFA.                                                                                |
-| `SUPABASE_SECRET_KEY`      | Supabase Auth **admin** API only (create and ban staff users).                                                                       |
-| `TEST_ADMIN_DATABASE_URL`  | Tests only, local stack only. Never set on Vercel.                                                                                   |
-| `NEXT_BUILD_CPUS`          | Optional. Number of build workers (default 2).                                                                                       |
+| Name                       | Purpose                                                                                                                                                                                                                   |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`             | Postgres as `app_server`. Hosted: the transaction pooler URL (port 6543) with user `app_server.<project-ref>` and `sslmode=require`.                                                                                      |
+| `SUPABASE_URL`             | Supabase API URL.                                                                                                                                                                                                         |
+| `SUPABASE_PUBLISHABLE_KEY` | Used by the server for Supabase Auth sign-in and MFA.                                                                                                                                                                     |
+| `SUPABASE_SECRET_KEY`      | Supabase Auth **admin** API only (create and ban staff users).                                                                                                                                                            |
+| `SUPABASE_JWT_SECRET`      | Signs the 15-minute, booth-scoped channel tokens that terminals use to subscribe to Supabase Realtime. Hosted: Project Settings → API → JWT secret (legacy). Local: `JWT_SECRET` from `npx supabase status`. Server-only. |
+| `SIGNAL_PROVIDER`          | `supabase` (default) or `ably`.                                                                                                                                                                                           |
+| `ABLY_API_KEY`             | Required only when `SIGNAL_PROVIDER=ably`. Server-only; terminals receive a subscribe-only token request, never this key.                                                                                                 |
+| `ABLY_TEST_API_KEY`        | Tests only: a dedicated Ably test app; enables the live Ably contract tests.                                                                                                                                              |
+| `TEST_ADMIN_DATABASE_URL`  | Tests only, local stack only. Never set on Vercel.                                                                                                                                                                        |
+| `NEXT_BUILD_CPUS`          | Optional. Number of build workers (default 2).                                                                                                                                                                            |
 
 ## Local
 

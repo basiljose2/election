@@ -14,6 +14,10 @@ const schema = z.object({
   SUPABASE_URL: z.url(),
   SUPABASE_PUBLISHABLE_KEY: z.string().min(1),
   SUPABASE_SECRET_KEY: z.string().min(1),
+  // Needed only to mint terminal channel tokens (Supabase Realtime); see docs/ENVIRONMENTS.md.
+  SUPABASE_JWT_SECRET: z.string().min(32).optional(),
+  SIGNAL_PROVIDER: z.enum(["supabase", "ably"]).default("supabase"),
+  ABLY_API_KEY: z.string().min(1).optional(),
   VERCEL_ENV: z.enum(["production", "preview", "development"]).optional(),
 });
 
@@ -23,6 +27,9 @@ export interface ServerEnv {
   supabaseUrl: string;
   supabasePublishableKey: string;
   supabaseSecretKey: string;
+  supabaseJwtSecret: string | undefined;
+  signalProvider: "supabase" | "ably";
+  ablyApiKey: string | undefined;
 }
 
 export function resolveAppEnv(vercelEnv: string | undefined): AppEnv {
@@ -66,6 +73,9 @@ export function parseServerEnv(source: Record<string, string | undefined>): Serv
     supabaseUrl: env.SUPABASE_URL,
     supabasePublishableKey: env.SUPABASE_PUBLISHABLE_KEY,
     supabaseSecretKey: env.SUPABASE_SECRET_KEY,
+    supabaseJwtSecret: env.SUPABASE_JWT_SECRET,
+    signalProvider: env.SIGNAL_PROVIDER,
+    ablyApiKey: env.ABLY_API_KEY,
   };
 }
 

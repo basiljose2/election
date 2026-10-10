@@ -5,6 +5,7 @@ export type CommandErrorCode =
   | "reauth_required"
   | "invalid_input"
   | "lifecycle"
+  | "invalid_transition"
   | "conflict"
   | "not_found";
 

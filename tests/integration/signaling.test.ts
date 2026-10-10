@@ -206,7 +206,7 @@ describe("terminal state endpoint", () => {
         "role",
         "version",
       ]);
-      expect(voting).toMatchObject({ role: "voting", ballotPending: true, boothState: "frozen" });
+      expect(voting).toMatchObject({ role: "voting", ballotPending: true, boothState: "setup" });
       expect(JSON.stringify(voting)).not.toMatch(
         /count|cast|candidate|choice|nota|selection|total/i,
       );

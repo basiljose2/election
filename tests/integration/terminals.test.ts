@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { appendAuditEvent } from "@/lib/audit/append";
 import type { Actor } from "@/lib/auth/roles";
 import { CommandError } from "@/lib/commands/errors";
@@ -18,7 +18,14 @@ import {
   deviceIdFor,
   type PairingDeps,
 } from "@/lib/terminals/pairing";
-import { actorFor, adminPool, appPool, auditEvents, createStaffFixture } from "../support/fixtures";
+import {
+  actorFor,
+  adminPool,
+  appPool,
+  auditEvents,
+  createStaffFixture,
+  setBoothState,
+} from "../support/fixtures";
 
 const app = appPool();
 const admin = adminPool();
@@ -27,7 +34,6 @@ const commands = createTerminalCommands(bus);
 
 afterAll(async () => {
   await admin.query("drop table if exists public.ballot_sessions");
-  await admin.query("drop table if exists public.booth_states");
   await Promise.all([app.end(), admin.end()]);
 });
 
@@ -170,23 +176,12 @@ describe("terminal credentials", () => {
   it("rejects every credential of a Closed or Sealed booth (fixture)", async () => {
     const f = await frozenBooth();
     const { token } = await registerMaster(f);
-    await admin.query(
-      "create table if not exists public.booth_states (booth_id uuid primary key, state text not null)",
-    );
-    await admin.query("grant select on public.booth_states to app_server");
-    try {
-      for (const state of ["closed", "sealed"]) {
-        await admin.query(
-          "insert into public.booth_states values ($1, $2) on conflict (booth_id) do update set state = $2",
-          [f.boothId, state],
-        );
-        expect(await verifyTerminalCredential(app, token, { type: "master" })).toMatchObject({
-          ok: false,
-          reason: "booth_closed",
-        });
-      }
-    } finally {
-      await admin.query("drop table public.booth_states");
+    for (const state of ["closed", "sealed"] as const) {
+      await setBoothState(admin, f.boothId, state);
+      expect(await verifyTerminalCredential(app, token, { type: "master" })).toMatchObject({
+        ok: false,
+        reason: "booth_closed",
+      });
     }
   });
 });
@@ -465,6 +460,11 @@ describe("kiosk pairing flow", () => {
 });
 
 describe("attempt limits", () => {
+  // The system-wide ceiling counts failures from every test in the last minute; start clean.
+  beforeEach(async () => {
+    await admin.query("delete from public.pairing_attempts");
+  });
+
   it("rejects and audits the 6th attempt from one client, even with the right code", async () => {
     clock = new Date();
     const f = await frozenBooth();
@@ -617,22 +617,14 @@ describe("replacement and availability rules", () => {
       { boothId: f.boothId, masterToken: token },
       gatewayDeps(f.po),
     );
-    await admin.query(
-      "create table if not exists public.booth_states (booth_id uuid primary key, state text not null)",
+    await setBoothState(admin, f.boothId, "closed");
+    expect(
+      await submitPairingCode(pairingDeps, { code, ip: freshIp(), nonce: newCredentialToken() }),
+    ).toEqual({ status: "unavailable" });
+    await expectCommandError(
+      executeCommand(commands.registerMaster, { boothId: f.boothId }, gatewayDeps(f.po)),
+      "lifecycle",
     );
-    await admin.query("grant select on public.booth_states to app_server");
-    await admin.query("insert into public.booth_states values ($1, 'closed')", [f.boothId]);
-    try {
-      expect(
-        await submitPairingCode(pairingDeps, { code, ip: freshIp(), nonce: newCredentialToken() }),
-      ).toEqual({ status: "unavailable" });
-      await expectCommandError(
-        executeCommand(commands.registerMaster, { boothId: f.boothId }, gatewayDeps(f.po)),
-        "lifecycle",
-      );
-    } finally {
-      await admin.query("drop table public.booth_states");
-    }
   });
 });
 

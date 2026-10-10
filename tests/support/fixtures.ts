@@ -121,3 +121,25 @@ export async function auditEvents(
   );
   return rows;
 }
+
+const BOOTH_PATH = ["setup", "mock_poll", "mock_cleared", "open", "closed", "sealed"] as const;
+export type BoothStateName = (typeof BOOTH_PATH)[number];
+
+/** Moves a booth forward along the normal path to `target` (the database enforces legality). */
+export async function setBoothState(
+  admin: Pick<Pool, "query">,
+  boothId: string,
+  target: BoothStateName,
+): Promise<void> {
+  const { rows } = await admin.query<{ state: BoothStateName }>(
+    "select state from public.booth_states where booth_id = $1",
+    [boothId],
+  );
+  const from = BOOTH_PATH.indexOf(rows[0]!.state);
+  for (const next of BOOTH_PATH.slice(from + 1, BOOTH_PATH.indexOf(target) + 1)) {
+    await admin.query("update public.booth_states set state = $2 where booth_id = $1", [
+      boothId,
+      next,
+    ]);
+  }
+}

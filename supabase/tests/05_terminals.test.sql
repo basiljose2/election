@@ -124,13 +124,14 @@ select ok(public.booth_accepts_terminals('d0000000-0000-0000-0000-000000000001')
   'a booth of a Frozen Election accepts terminals');
 
 reset role;
-create table public.booth_states (booth_id uuid primary key, state text not null);
-grant select on public.booth_states to app_server;
-insert into public.booth_states values ('d0000000-0000-0000-0000-000000000001', 'closed');
+update public.booth_states set state = 'mock_poll' where booth_id = 'd0000000-0000-0000-0000-000000000001';
+update public.booth_states set state = 'mock_cleared' where booth_id = 'd0000000-0000-0000-0000-000000000001';
+update public.booth_states set state = 'open' where booth_id = 'd0000000-0000-0000-0000-000000000001';
+update public.booth_states set state = 'closed' where booth_id = 'd0000000-0000-0000-0000-000000000001';
 set local role app_server;
 
 select ok(not public.booth_accepts_terminals('d0000000-0000-0000-0000-000000000001'),
-  'a Closed booth (fixture) does not accept terminals');
+  'a Closed booth does not accept terminals');
 
 reset role;
 create table public.ballot_sessions (booth_id uuid not null, status text not null);

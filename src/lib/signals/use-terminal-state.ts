@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Signal, SignalSubscriber, Subscription } from "./types";
 
 export const POLL_INTERVAL_MS = 2_000;
@@ -45,12 +45,20 @@ async function subscriberFor(
 export function useTerminalState<S extends { version: number }>(options: {
   /** "/master/api" or "/terminal/api" */
   base: string;
+  /**
+   * Also re-fetch this often while real-time is connected. Needed where something changes with
+   * no signal, such as the other terminal going offline (the Master Terminal).
+   */
+  refreshEveryMs?: number;
 }) {
-  const { base } = options;
+  const { base, refreshEveryMs } = options;
   const [state, setState] = useState<S | null>(null);
   const [mode, setMode] = useState<ConnectionMode>("connecting");
   const [unpaired, setUnpaired] = useState(false);
   const versionRef = useRef(-1);
+  const refreshRef = useRef<() => Promise<void>>(async () => {});
+  /** Re-fetches the authoritative state now (after an action, for example). */
+  const refreshNow = useCallback(() => refreshRef.current(), []);
 
   useEffect(() => {
     let stopped = false;
@@ -77,6 +85,8 @@ export function useTerminalState<S extends { version: number }>(options: {
         // Offline: the next poll or reconnect tries again.
       }
     }
+
+    refreshRef.current = refresh;
 
     function startPolling() {
       if (pollTimer) return;
@@ -148,6 +158,7 @@ export function useTerminalState<S extends { version: number }>(options: {
     void connect();
     void heartbeat();
     const heartbeatTimer = setInterval(heartbeat, HEARTBEAT_INTERVAL_MS);
+    const steadyTimer = refreshEveryMs ? setInterval(refresh, refreshEveryMs) : undefined;
     const onOnline = () => void refresh();
     window.addEventListener("online", onOnline);
 
@@ -157,9 +168,10 @@ export function useTerminalState<S extends { version: number }>(options: {
       stopPolling();
       if (refreshTimer) clearTimeout(refreshTimer);
       clearInterval(heartbeatTimer);
+      if (steadyTimer) clearInterval(steadyTimer);
       window.removeEventListener("online", onOnline);
     };
-  }, [base]);
+  }, [base, refreshEveryMs]);
 
-  return { state, mode, unpaired };
+  return { state, mode, unpaired, refresh: refreshNow };
 }

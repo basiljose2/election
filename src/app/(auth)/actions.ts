@@ -1,11 +1,10 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { appendAuditEvent } from "@/lib/audit/append";
-import { recordAuthEvent, supabaseAuthenticator } from "@/lib/auth/adapters";
+import { recordAuthEvent } from "@/lib/auth/adapters";
 import { getActorResolution } from "@/lib/auth/current-actor";
+import { signInForRequest } from "@/lib/auth/password-signin";
 import { isPrivileged } from "@/lib/auth/roles";
-import { signInWithPassword } from "@/lib/auth/signin";
 import { createSupabaseServerClient } from "@/lib/auth/supabase";
 import { getPool } from "@/lib/db/pool";
 
@@ -22,23 +21,8 @@ function field(formData: FormData, name: string): string {
   return typeof value === "string" ? value : "";
 }
 
-async function signIn(email: string, password: string, previousSessionId?: string) {
-  const supabase = await createSupabaseServerClient();
-  return signInWithPassword(
-    email,
-    password,
-    {
-      db: getPool(),
-      now: () => new Date(),
-      authenticator: supabaseAuthenticator(supabase),
-      appendAudit: appendAuditEvent,
-    },
-    { previousSessionId },
-  );
-}
-
 export async function signInAction(formData: FormData): Promise<void> {
-  const result = await signIn(field(formData, "email"), field(formData, "password"));
+  const result = await signInForRequest(field(formData, "email"), field(formData, "password"));
   if (result.status === "locked") redirect("/sign-in?error=locked");
   if (result.status !== "ok") redirect("/sign-in?error=invalid");
   // /staff sends privileged roles on to MFA enrolment or challenge.
@@ -145,7 +129,7 @@ export async function reauthenticateAction(formData: FormData): Promise<void> {
   const next = safeNext(formData.get("next"));
   const back = `/reauth?next=${encodeURIComponent(next)}`;
 
-  const result = await signIn(actor.email, field(formData, "password"), actor.sessionId);
+  const result = await signInForRequest(actor.email, field(formData, "password"), actor.sessionId);
   if (result.status === "locked") redirect(`${back}&error=locked`);
   if (result.status !== "ok") redirect(`${back}&error=invalid`);
 

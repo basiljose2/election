@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -33,11 +34,16 @@ export default async function globalSetup() {
   const setupElectionId = randomUUID();
   const terminalsElectionId = randomUUID();
   const terminalsBoothId = randomUUID();
+  const masterElectionId = randomUUID();
+  const masterBoothId = randomUUID();
+  const masterPostId = randomUUID();
+  const masterCandidateIds = [randomUUID(), randomUUID(), randomUUID()];
 
   for (const [id, name] of [
     [electionId, "E2E election"],
     [setupElectionId, "E2E setup election"],
     [terminalsElectionId, "E2E terminals election"],
+    [masterElectionId, "E2E master election"],
   ]) {
     await db.query(
       "insert into public.elections (id, name, polling_date) values ($1, $2, current_date)",
@@ -47,6 +53,24 @@ export default async function globalSetup() {
   await db.query(
     "insert into public.booths (id, election_id, name, location) values ($1, $2, 'Terminals booth', 'Hall')",
     [terminalsBoothId, terminalsElectionId],
+  );
+  await db.query(
+    "insert into public.booths (id, election_id, name, location) values ($1, $2, 'Master booth', 'Hall')",
+    [masterBoothId, masterElectionId],
+  );
+  await db.query(
+    "insert into public.posts (id, election_id, name, display_order, seats) values ($1, $2, 'President', 0, 1)",
+    [masterPostId, masterElectionId],
+  );
+  for (const [i, id] of masterCandidateIds.entries()) {
+    await db.query(
+      "insert into public.candidates (id, election_id, post_id, name, sort_order) values ($1, $2, $3, $4, $5)",
+      [id, masterElectionId, masterPostId, `Master candidate ${i}`, i],
+    );
+  }
+  await db.query(
+    "insert into public.booth_posts (election_id, booth_id, post_id) values ($1, $2, $3)",
+    [masterElectionId, masterBoothId, masterPostId],
   );
   for (const [id, name] of [
     [boothId, "E2E booth"],
@@ -106,6 +130,16 @@ export default async function globalSetup() {
         boothId: terminalsBoothId,
       }),
     },
+    master: {
+      electionId: masterElectionId,
+      boothId: masterBoothId,
+      postId: masterPostId,
+      candidateIds: masterCandidateIds,
+      presidingOfficer: await staff("master-po", "presiding_officer", {
+        electionId: masterElectionId,
+        boothId: masterBoothId,
+      }),
+    },
     superAdmin: await staff("sa", "super_admin", {}),
     returningOfficer: await staff("ro", "returning_officer", { electionId }),
     presidingOfficer: await staff("po", "presiding_officer", { electionId, boothId }),
@@ -115,6 +149,24 @@ export default async function globalSetup() {
     "update public.elections set status = 'frozen', frozen_at = now(), freeze_count = 1 where id = $1",
     [terminalsElectionId],
   );
+
+  // The master fixture goes through the real freeze (Ballot Definitions, signing key), then
+  // Polling Open. The freeze command is server-only code, so it runs in its own process.
+  const masterRo = await staff("master-ro", "returning_officer", { electionId: masterElectionId });
+  execFileSync(
+    "npx",
+    [
+      "tsx",
+      "--conditions=react-server",
+      "scripts/e2e-freeze.ts",
+      masterElectionId,
+      masterRo.userId,
+    ],
+    { stdio: "inherit", shell: process.platform === "win32" },
+  );
+  await db.query("update public.elections set status = 'polling_open' where id = $1", [
+    masterElectionId,
+  ]);
   await db.end();
 
   mkdirSync(path.dirname(USERS_FILE), { recursive: true });

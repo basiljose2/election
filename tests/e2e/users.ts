@@ -27,6 +27,17 @@ export interface E2eUsers {
   };
   /** A Frozen election with one booth and its Presiding Officer, for terminal pairing. */
   terminals: { electionId: string; boothId: string; presidingOfficer: E2eUser };
+  /**
+   * A really-frozen, Polling Open Election with one booth (still in Setup) and one Post with
+   * three candidates, for the Master Terminal spec.
+   */
+  master: {
+    electionId: string;
+    boothId: string;
+    postId: string;
+    candidateIds: string[];
+    presidingOfficer: E2eUser;
+  };
   superAdmin: E2eUser;
   returningOfficer: E2eUser;
   presidingOfficer: E2eUser;

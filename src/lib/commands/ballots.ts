@@ -15,8 +15,9 @@ import { uuid } from "./setup-common";
  * Neither command touches Vote Selections.
  */
 
-export const CANCEL_REASONS = ["voter_left", "voter_refused", "terminal_fault"] as const;
-export type CancelReason = (typeof CANCEL_REASONS)[number];
+import { CANCEL_REASONS } from "./cancel-reasons";
+
+export { CANCEL_REASONS, type CancelReason } from "./cancel-reasons";
 
 const authorize = (actor: Actor, input: { boothId: string }) => boothGrant(actor, input.boothId);
 const describeBooth = (input: { boothId: string }) => ({

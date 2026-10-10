@@ -2,6 +2,7 @@ import type { Pool } from "pg";
 import type { AppendAuditEvent } from "@/lib/audit/append";
 import { withTransaction } from "@/lib/db/pool";
 import type { AuthenticatedTerminal } from "./credentials";
+import { computeAllowedActions, type AllowedAction } from "./allowed-actions";
 import { DEVICE_ACTOR } from "./pairing";
 
 export const HEARTBEAT_INTERVAL_MS = 10_000;
@@ -38,14 +39,22 @@ export interface MasterTerminalState {
   version: number;
   boothState: string;
   ballotPending: boolean;
-  /** Ballots cast and cancelled at this booth (counts only; never a choice). */
+  electionName: string;
+  boothName: string;
+  /** Real ballots cast and cancelled at this booth (counts only; never a choice). */
   ballotsCast: number;
   ballotsCancelled: number;
+  /** The current mock round's ballots; shown instead of the real counts during Mock Poll. */
+  mock: { round: number; ballotsCast: number; ballotsCancelled: number };
+  /** What the Master Terminal may offer now, with the reason for each refusal. */
+  allowedActions: AllowedAction[];
   votingTerminal: {
     paired: boolean;
     deviceId: string | null;
     online: boolean;
     lastSeenAt: string | null;
+    /** Milliseconds since the last heartbeat, as of this response. */
+    lastSeenAgoMs: number | null;
   };
   pairing: {
     codeId: string;
@@ -145,22 +154,69 @@ export async function getTerminalState(
   const c = code.rows[0];
   const codeLive = c ? (c.status === "active" ? c.expires_at : c.pending_expires_at)! > now : false;
 
-  const cast = await deps.db.query<{ n: string; cancelled: string }>(
-    `select public.booth_ballots_cast($1) as n,
-            (select ballots_cancelled from public.booth_counters where booth_id = $1) as cancelled`,
+  const counts = await deps.db.query<{
+    election_name: string;
+    election_status: string;
+    booth_name: string;
+    real_cast: string;
+    real_cancelled: string;
+    mock_round: number;
+    mock_cast: string;
+    mock_cancelled: string;
+    master_active: boolean;
+  }>(
+    `select e.name as election_name, e.status::text as election_status, b.name as booth_name,
+            public.booth_ballots_cast(b.id) as real_cast,
+            (select count(*) from public.ballot_sessions s
+              where s.booth_id = b.id and not s.is_mock and s.status = 'cancelled') as real_cancelled,
+            c.mock_round,
+            (select count(*) from public.ballot_sessions s
+              where s.booth_id = b.id and s.is_mock and s.mock_round = c.mock_round
+                and s.status = 'cast') as mock_cast,
+            (select count(*) from public.ballot_sessions s
+              where s.booth_id = b.id and s.is_mock and s.mock_round = c.mock_round
+                and s.status = 'cancelled') as mock_cancelled,
+            exists (select 1 from public.terminals t
+                     where t.booth_id = b.id and t.type = 'master' and t.status = 'active')
+              as master_active
+       from public.booths b
+       join public.elections e on e.id = b.election_id
+       join public.booth_counters c on c.booth_id = b.id
+      where b.id = $1`,
     [terminal.boothId],
   );
+  const k = counts.rows[0]!;
+  const realCast = Number(k.real_cast);
+  const mockCast = Number(k.mock_cast);
 
   return {
     role: "master",
     ...common,
-    ballotsCast: Number(cast.rows[0]!.n),
-    ballotsCancelled: Number(cast.rows[0]!.cancelled ?? 0),
+    electionName: k.election_name,
+    boothName: k.booth_name,
+    ballotsCast: realCast,
+    ballotsCancelled: Number(k.real_cancelled),
+    mock: {
+      round: k.mock_round,
+      ballotsCast: mockCast,
+      ballotsCancelled: Number(k.mock_cancelled),
+    },
+    allowedActions: computeAllowedActions({
+      boothState: row.booth_state,
+      electionStatus: k.election_status,
+      ballotPending: row.pending,
+      masterActive: k.master_active,
+      votingPaired: Boolean(v),
+      votingOnline: online,
+      realBallotsCast: realCast,
+      mockBallotsCast: mockCast,
+    }),
     votingTerminal: {
       paired: Boolean(v),
       deviceId: v?.device_id ?? null,
       online,
       lastSeenAt: v?.last_seen_at?.toISOString() ?? null,
+      lastSeenAgoMs: v?.last_seen_at ? Math.max(0, now.getTime() - v.last_seen_at.getTime()) : null,
     },
     pairing:
       c && codeLive

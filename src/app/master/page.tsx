@@ -30,6 +30,13 @@ export default async function MasterPage({ searchParams }: PageProps<"/master">)
     boothId: po.boothId,
   });
 
+  if (!check.ok && check.reason === "booth_closed") {
+    return (
+      <PageShell title="Master Terminal">
+        <Notice tone="info">The poll at this booth is closed.</Notice>
+      </PageShell>
+    );
+  }
   if (!check.ok) {
     return (
       <PageShell title="Register this device">
@@ -46,9 +53,10 @@ export default async function MasterPage({ searchParams }: PageProps<"/master">)
     );
   }
   return (
-    <PageShell title="Master Terminal">
+    <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-4 px-4 py-6">
+      <h1 className="sr-only">Master Terminal</h1>
       {error && <Notice tone="error">{error}</Notice>}
       <MasterPanel boothId={po.boothId} />
-    </PageShell>
+    </main>
   );
 }

@@ -56,6 +56,8 @@ jobs:
           SUPABASE_PUBLISHABLE_KEY=${PUBLISHABLE_KEY}
           SUPABASE_SECRET_KEY=${SECRET_KEY}
           TEST_ADMIN_DATABASE_URL=${DB_URL}
+          SUPABASE_JWT_SECRET=${JWT_SECRET}
+          VOTE_SIGNING_MASTER_KEY=$(openssl rand -base64 32)
           EOF
 
       - name: SQL tests (grants, triggers, RLS)

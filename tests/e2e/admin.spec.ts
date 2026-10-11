@@ -1,7 +1,10 @@
-import { expect, test } from "@playwright/test";
+import { expect as baseExpect, test } from "@playwright/test";
 import { E2E_PASSWORD, enrollTotp, loadUsers, signIn } from "./users";
 
 test.describe.configure({ timeout: 120_000 });
+// This spec runs first, against a cold server: the first server actions are slow.
+test.use({ actionTimeout: 15_000 });
+const expect = baseExpect.configure({ timeout: 15_000 });
 
 test("a Super Admin creates staff, assigns and revokes a role, and deactivates the account", async ({
   page,

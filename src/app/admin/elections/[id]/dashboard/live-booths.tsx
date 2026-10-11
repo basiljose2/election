@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { PollingDashboard } from "@/lib/results/polling-dashboard";
-import { forceCloseAction } from "./actions";
+import { cancelPendingBallotAction, forceCloseAction } from "./actions";
 
 /** How often the booth table refreshes (the requirement is within 10 seconds). */
 export const DASHBOARD_REFRESH_MS = 5_000;
@@ -118,6 +118,46 @@ export function LiveBooths({
           ))}
         </tbody>
       </table>
+
+      {canForceClose && data.booths.some((b) => b.ballotPending) && (
+        <section aria-label="Pending ballots" className="flex flex-col gap-3">
+          <h2 className="text-lg font-medium">Pending ballots</h2>
+          <p className="text-sm text-zinc-600 dark:text-zinc-400">
+            Use this only when the booth&apos;s Master Terminal cannot cancel the ballot itself. The
+            voter&apos;s kiosk locks and nothing is recorded.
+          </p>
+          <ul className="flex flex-col gap-3" data-testid="pending-ballots">
+            {data.booths
+              .filter((b) => b.ballotPending)
+              .map((b) => (
+                <li
+                  key={b.boothId}
+                  className="flex flex-wrap items-center gap-3 rounded-md border border-zinc-300 p-3 dark:border-zinc-700"
+                >
+                  <span className="font-medium">{b.name}</span>
+                  <form action={cancelPendingBallotAction} className="flex flex-wrap gap-2">
+                    <input type="hidden" name="electionId" value={data.electionId} />
+                    <input type="hidden" name="boothId" value={b.boothId} />
+                    <input
+                      name="note"
+                      required
+                      minLength={3}
+                      placeholder="Reason (for example: Master Terminal failed)"
+                      aria-label={`Reason for cancelling the pending ballot at ${b.name}`}
+                      className="h-9 w-72 rounded-md border border-zinc-300 bg-transparent px-2 text-sm dark:border-zinc-700"
+                    />
+                    <button
+                      type="submit"
+                      className="h-9 rounded-md bg-red-700 px-3 text-sm font-medium text-white"
+                    >
+                      Cancel pending ballot at {b.name}
+                    </button>
+                  </form>
+                </li>
+              ))}
+          </ul>
+        </section>
+      )}
 
       {data.electionStatus === "polling_open" && (
         <section aria-label="Complete all polls" className="flex flex-col gap-3">

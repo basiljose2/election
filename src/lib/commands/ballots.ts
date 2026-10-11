@@ -7,7 +7,7 @@ import { verifyTerminalCredential } from "@/lib/terminals/credentials";
 import { OFFLINE_AFTER_MS } from "@/lib/terminals/state";
 import { CommandError } from "./errors";
 import { defineCommand, type CommandContext } from "./gateway";
-import { uuid } from "./setup-common";
+import { returningOfficerGrant, uuid } from "./setup-common";
 
 /**
  * Presiding Officer commands for Ballot Sessions. Like the terminal commands they need BOTH
@@ -190,7 +190,72 @@ export function createBallotCommands(publisher: SignalPublisher) {
     },
   });
 
-  return { issueBallotSession, cancelBallotSession };
+  /**
+   * The Returning Officer cancels a booth's pending Ballot Session when its Master Terminal
+   * cannot (it failed, or its Presiding Officer is unreachable). It needs the officer's fresh
+   * re-authentication and a written reason, and is audited as an officer action. Same effect
+   * as the Presiding Officer's cancel: no Vote Selection exists, the cancelled count goes up
+   * for a real ballot, the Voting Terminal locks and a later cast is refused.
+   */
+  const cancelPendingBallotAsOfficer = defineCommand({
+    name: "ballot.session_cancelled_by_officer",
+    input: z.object({
+      electionId: uuid,
+      boothId: uuid,
+      note: z.string().trim().min(3, "A written reason is required").max(300),
+    }),
+    critical: true,
+    authorize: (actor, input) => returningOfficerGrant(actor, input.electionId),
+    describeTarget: (input) => ({
+      electionId: input.electionId,
+      target: { type: "booth", id: input.boothId },
+    }),
+    async execute(ctx, input) {
+      const booth = await boothContext(ctx.tx, input.boothId);
+      // A booth of another Election is "not found" under this Election's grant.
+      if (booth.election_id !== input.electionId) {
+        throw new CommandError("not_found", "Polling Booth not found");
+      }
+      const pending = await ctx.tx.query<{ id: string; is_mock: boolean }>(
+        `select id, is_mock from public.ballot_sessions
+          where booth_id = $1 and status = 'pending' for update`,
+        [input.boothId],
+      );
+      const session = pending.rows[0];
+      if (!session) throw new CommandError("lifecycle", "There is no pending ballot to cancel");
+
+      await ctx.tx.query(
+        `update public.ballot_sessions
+            set status = 'cancelled', finished_at = $2, cancel_reason = 'terminal_fault', cancel_note = $3
+          where id = $1`,
+        [session.id, ctx.now(), input.note],
+      );
+      if (!session.is_mock) {
+        await ctx.tx.query(
+          "update public.booth_counters set ballots_cancelled = ballots_cancelled + 1 where booth_id = $1",
+          [input.boothId],
+        );
+      }
+      await signalAfterCommit(ctx, publisher, input.boothId, "ballot-cancelled");
+      return {
+        result: { sessionId: session.id },
+        audit: {
+          electionId: input.electionId,
+          target: { type: "ballot_session", id: session.id },
+          before: { status: "pending" },
+          after: { status: "cancelled" },
+          detail: {
+            by: "returning_officer",
+            reason: "terminal_fault",
+            note: input.note,
+            is_mock: session.is_mock,
+          },
+        },
+      };
+    },
+  });
+
+  return { issueBallotSession, cancelBallotSession, cancelPendingBallotAsOfficer };
 }
 
 export type BallotCommands = ReturnType<typeof createBallotCommands>;

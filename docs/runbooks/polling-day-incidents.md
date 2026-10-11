@@ -32,11 +32,11 @@ The audit log records the cancellation, the pairing and the revocation.
 3. Registration is refused while a ballot is **pending**. Two cases:
    - the voter is still at the kiosk: let them finish. The cast completes the session and the
      refusal goes away.
-   - the voter has left a pending ballot and the old Master is dead: a pending ballot can be
-     cancelled **only from the booth's registered Master Terminal**, so call the RO, who
-     can **force-close** this booth (with a written reason). That cancels the pending ballot
-     and closes the booth; see section 5. (Known gap: there is no RO "cancel pending ballot"
-     command. If this case matters to you, raise it before polling day.)
+   - the voter has left a pending ballot and the old Master is dead: call the RO, who opens
+     the election **Dashboard**, finds the booth under **Pending ballots** and uses
+     **Cancel pending ballot** with a written reason (re-authentication required). The
+     voter's kiosk locks, nothing is recorded, and the cancellation is counted and audited as
+     an officer action. Then register the new Master Terminal. The booth keeps polling.
 4. After registering, pair the existing kiosk again only if it shows "no longer paired";
    otherwise it keeps working.
 

@@ -127,6 +127,7 @@ describe("the polling dashboard", () => {
     walk(dashboard);
     expect([...keys].sort()).toEqual(
       [
+        "ballotPending",
         "ballotsCancelled",
         "ballotsCast",
         "boothId",

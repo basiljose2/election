@@ -1,9 +1,9 @@
 ## 1. Project scaffold
 
 - [x] 1.1 Create the Next.js app (App Router, TypeScript strict) with Tailwind, ESLint and Prettier; verify `npm run build` and `npm run lint` pass
-- [ ] 1.2 Add Vitest and Playwright with one smoke test each; verify both run in CI
+- [x] 1.2 Add Vitest and Playwright with one smoke test each; verify both run in CI
 - [x] 1.3 Set up Supabase CLI, the local stack and a migrations folder; verify `supabase db reset` succeeds locally
-- [ ] 1.4 Configure Vercel env separation (local/preview/production) and a server-only env module that fails the build if imported by client code; verify with a test that a client import fails
+- [x] 1.4 Configure Vercel env separation (local/preview/production) and a server-only env module that fails the build if imported by client code; verify with a test that a client import fails
 
 ## 2. Database roles and baseline security
 

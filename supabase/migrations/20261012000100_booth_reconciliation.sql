@@ -9,6 +9,8 @@
 --     crypto_sign_verify_detached against the Election's PUBLIC key.
 --   * booth_tallies and reconciliation_runs are append-only, like audit_events.
 
+-- The schema must exist first: a fresh database (and hosted projects) do not have it.
+create schema if not exists pgsodium;
 create extension if not exists pgsodium with schema pgsodium;
 
 -- ---------------------------------------------------------------------------------------

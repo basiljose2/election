@@ -25,6 +25,17 @@ test.afterAll(async () => {
 });
 
 test("dashboard, checklist, force-close, completion, declaration and exports", async ({ page }) => {
+  // A ballot is pending at booth 2 whose Master Terminal is gone (a stand-in kiosk row).
+  await admin.query(
+    `with t as (
+       insert into public.terminals (election_id, booth_id, type, status, credential_hash, revoked_at, revoked_reason)
+       values ($1, $2, 'voting', 'revoked', encode(sha256(gen_random_uuid()::text::bytea), 'hex'), now(), 'fixture')
+       returning id)
+     insert into public.ballot_sessions (election_id, booth_id, terminal_id, is_mock, issued_by)
+     select $1, $2, t.id, false, $3 from t`,
+    [fixture.electionId, fixture.booth2Id, fixture.presidingOfficer2.userId],
+  );
+
   await signIn(page, fixture.returningOfficer.email);
   await enrollTotp(page);
   await page.goto(dashboardUrl);
@@ -43,6 +54,15 @@ test("dashboard, checklist, force-close, completion, declaration and exports", a
   const checklist = page.getByTestId("checklist");
   await expect(checklist).toContainText("Results booth 2");
   await expect(checklist).not.toContainText("Results booth 1");
+
+  // ---- The pending ballot is cancelled by the Returning Officer, with a written reason.
+  await expect(page.getByTestId("pending-ballots")).toContainText("Results booth 2");
+  await page
+    .getByLabel("Reason for cancelling the pending ballot at Results booth 2")
+    .fill("Master Terminal failed");
+  await page.getByRole("button", { name: "Cancel pending ballot at Results booth 2" }).click();
+  await expect(page.getByText("Pending ballot cancelled")).toBeVisible();
+  await expect(page.getByTestId("pending-ballots")).toHaveCount(0);
 
   // ---- A ballot is recorded at booth 2 (simulated at the counter): the table follows <= 10 s.
   await admin.query(

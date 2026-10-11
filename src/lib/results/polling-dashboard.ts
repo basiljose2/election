@@ -17,6 +17,8 @@ export interface DashboardBooth {
   votingOnline: boolean;
   ballotsCast: number;
   ballotsCancelled: number;
+  /** A Ballot Session is pending (the voter is, or was, at the kiosk). */
+  ballotPending: boolean;
   /** ISO time of the booth's latest ballot activity, or null if none yet. */
   lastActivityAt: string | null;
 }
@@ -59,11 +61,14 @@ export async function getPollingDashboard(
     state: string;
     ballots_cast: string;
     ballots_cancelled: string;
+    pending: boolean;
     last_activity: Date | null;
     master_seen: Date | null;
     voting_seen: Date | null;
   }>(
     `select b.id, b.name, s.state::text as state, c.ballots_cast, c.ballots_cancelled,
+            exists (select 1 from public.ballot_sessions p
+                     where p.booth_id = b.id and p.status = 'pending') as pending,
             (select max(coalesce(x.finished_at, x.issued_at))
                from public.ballot_sessions x where x.booth_id = b.id and not x.is_mock) as last_activity,
             (select h.last_seen_at from public.terminals t
@@ -87,6 +92,7 @@ export async function getPollingDashboard(
     votingOnline: isOnline(r.voting_seen, now),
     ballotsCast: Number(r.ballots_cast),
     ballotsCancelled: Number(r.ballots_cancelled),
+    ballotPending: r.pending,
     lastActivityAt: r.last_activity?.toISOString() ?? null,
   }));
   return {

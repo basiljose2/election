@@ -2,6 +2,7 @@
 
 import { redirect, unstable_rethrow } from "next/navigation";
 import { isCommandError } from "@/lib/commands/errors";
+import { createBallotCommands } from "@/lib/commands/ballots";
 import { executeCommand } from "@/lib/commands/gateway";
 import { createAppLifecycle } from "@/lib/lifecycle/app";
 import { getSignalPublisher } from "@/lib/signals/server";
@@ -72,5 +73,24 @@ export async function declareResultsAction(formData: FormData): Promise<void> {
     () => executeCommand(lifecycle.declareResults, { electionId }),
     "Results declared",
     `/admin/elections/${electionId}/results`,
+  );
+}
+
+/**
+ * The Returning Officer cancels a pending ballot when the booth's Master Terminal cannot
+ * (it failed, or its Presiding Officer is unreachable).
+ */
+export async function cancelPendingBallotAction(formData: FormData): Promise<void> {
+  const electionId = field(formData, "electionId");
+  const ballots = createBallotCommands(await getSignalPublisher());
+  await run(
+    electionId,
+    () =>
+      executeCommand(ballots.cancelPendingBallotAsOfficer, {
+        electionId,
+        boothId: field(formData, "boothId"),
+        note: field(formData, "note"),
+      }),
+    "Pending ballot cancelled",
   );
 }

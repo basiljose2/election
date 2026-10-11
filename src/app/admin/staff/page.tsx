@@ -28,7 +28,19 @@ interface StaffRow {
   }>;
 }
 
-async function loadStaff(): Promise<StaffRow[]> {
+/** Staff shown at once: the page stays light however many accounts exist (search finds the rest). */
+const PAGE_SIZE = 50;
+
+async function loadStaff(
+  search: string,
+): Promise<{ rows: StaffRow[]; total: number; matching: number }> {
+  const like = `%${search.replace(/[\\%_]/g, "\\$&")}%`;
+  const counts = await getPool().query<{ total: string; matching: string }>(
+    `select count(*) as total,
+            count(*) filter (where $1 = '' or email ilike $2 or display_name ilike $2) as matching
+       from public.staff`,
+    [search, like],
+  );
   const { rows } = await getPool().query<StaffRow>(
     `select s.user_id, s.email, s.display_name, s.active,
             coalesce(json_agg(json_build_object('id', r.id, 'role', r.role,
@@ -36,10 +48,13 @@ async function loadStaff(): Promise<StaffRow[]> {
                      order by r.assigned_at) filter (where r.id is not null), '[]') as roles
        from public.staff s
        left join public.staff_roles r on r.user_id = s.user_id and r.revoked_at is null
+      where $1 = '' or s.email ilike $2 or s.display_name ilike $2
       group by s.user_id
-      order by s.active desc, s.email`,
+      order by s.created_at desc, s.email
+      limit ${PAGE_SIZE}`,
+    [search, like],
   );
-  return rows;
+  return { rows, total: Number(counts.rows[0]!.total), matching: Number(counts.rows[0]!.matching) };
 }
 
 export default async function ManageStaffPage({ searchParams }: PageProps<"/admin/staff">) {
@@ -64,7 +79,8 @@ export default async function ManageStaffPage({ searchParams }: PageProps<"/admi
   const params = await searchParams;
   const ok = first(params.ok);
   const error = first(params.error);
-  const staff = await loadStaff();
+  const search = (first(params.q) ?? "").trim().slice(0, 100);
+  const { rows: staff, matching } = await loadStaff(search);
 
   return (
     <PageShell title="Manage staff">
@@ -95,6 +111,24 @@ export default async function ManageStaffPage({ searchParams }: PageProps<"/admi
 
       <section className="flex flex-col gap-4">
         <h2 className="text-lg font-medium">Staff</h2>
+        <form method="get" className="flex flex-wrap items-end gap-2" role="search">
+          <label className="flex flex-col gap-1 text-sm font-medium">
+            Find a staff member
+            <input
+              name="q"
+              defaultValue={search}
+              className="h-10 rounded-md border border-zinc-300 bg-transparent px-3 text-base font-normal dark:border-zinc-700"
+            />
+          </label>
+          <Button type="submit" variant="plain">
+            Search
+          </Button>
+        </form>
+        <p className="text-sm text-zinc-600 dark:text-zinc-400" data-testid="staff-count">
+          {matching > staff.length
+            ? `Showing the ${staff.length} most recently added of ${matching}; search to find others.`
+            : `${matching} staff ${matching === 1 ? "member" : "members"}.`}
+        </p>
         {staff.map((s) => (
           <article
             key={s.user_id}

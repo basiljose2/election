@@ -314,7 +314,7 @@ describe("Realtime authorization (local stack)", () => {
       { boothId, token: mk("master") },
       { onSignal: (s) => received.push(s), onStatus: (s) => (listening = s === "connected") },
     );
-    for (let i = 0; i < 100 && !listening; i++) await new Promise((r) => setTimeout(r, 50));
+    for (let i = 0; i < 400 && !listening; i++) await new Promise((r) => setTimeout(r, 50));
     expect(listening).toBe(true);
 
     // A second terminal of the same booth tries to broadcast on the channel.

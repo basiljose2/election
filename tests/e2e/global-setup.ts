@@ -38,6 +38,9 @@ export default async function globalSetup() {
   const masterBoothId = randomUUID();
   const masterPostId = randomUUID();
   const masterCandidateIds = [randomUUID(), randomUUID(), randomUUID()];
+  const resultsElectionId = randomUUID();
+  const resultsBoothId = randomUUID();
+  const resultsBooth2Id = randomUUID();
   const votingElectionId = randomUUID();
   const votingBoothId = randomUUID();
   const votingPresident = {
@@ -64,6 +67,43 @@ export default async function globalSetup() {
     "insert into public.booths (id, election_id, name, location) values ($1, $2, 'Terminals booth', 'Hall')",
     [terminalsBoothId, terminalsElectionId],
   );
+  // The results fixture: booth 1 holds seeded votes and is closed by scripts/e2e-seed-results.ts;
+  // booth 2 (its own Post, no votes) stays Open for the checklist and force-close.
+  await db.query(
+    "insert into public.elections (id, name, polling_date, nota_enabled) values ($1, $2, current_date, true)",
+    [resultsElectionId, `E2E results election ${run}`],
+  );
+  for (const [id, name] of [
+    [resultsBoothId, "Results booth 1"],
+    [resultsBooth2Id, "Results booth 2"],
+  ]) {
+    await db.query(
+      "insert into public.booths (id, election_id, name, location) values ($1, $2, $3, 'Hall')",
+      [id, resultsElectionId, name],
+    );
+  }
+  const resultsPosts = [
+    { name: "President", seats: 1, booth: resultsBoothId, candidates: 3 },
+    { name: "Council", seats: 2, booth: resultsBoothId, candidates: 3 },
+    { name: "Treasurer", seats: 1, booth: resultsBooth2Id, candidates: 2 },
+  ];
+  for (const [order, post] of resultsPosts.entries()) {
+    const postId = randomUUID();
+    await db.query(
+      "insert into public.posts (id, election_id, name, display_order, seats) values ($1, $2, $3, $4, $5)",
+      [postId, resultsElectionId, post.name, order, post.seats],
+    );
+    for (let i = 0; i < post.candidates; i++) {
+      await db.query(
+        "insert into public.candidates (id, election_id, post_id, name, sort_order) values ($1, $2, $3, $4, $5)",
+        [randomUUID(), resultsElectionId, postId, `${post.name} candidate ${i}`, i],
+      );
+    }
+    await db.query(
+      "insert into public.booth_posts (election_id, booth_id, post_id) values ($1, $2, $3)",
+      [resultsElectionId, post.booth, postId],
+    );
+  }
   // The voting-terminal fixture: two Posts (1 and 2 seats, three Candidates each) and NOTA.
   await db.query(
     "insert into public.elections (id, name, polling_date, nota_enabled) values ($1, $2, current_date, true)",
@@ -182,6 +222,22 @@ export default async function globalSetup() {
       }),
       observer: await staff("master-observer", "observer", { electionId: masterElectionId }),
     },
+    results: {
+      electionId: resultsElectionId,
+      boothId: resultsBoothId,
+      booth2Id: resultsBooth2Id,
+      returningOfficer: await staff("results-ro", "returning_officer", {
+        electionId: resultsElectionId,
+      }),
+      presidingOfficer1: await staff("results-po1", "presiding_officer", {
+        electionId: resultsElectionId,
+        boothId: resultsBoothId,
+      }),
+      presidingOfficer2: await staff("results-po2", "presiding_officer", {
+        electionId: resultsElectionId,
+        boothId: resultsBooth2Id,
+      }),
+    },
     voting: {
       electionId: votingElectionId,
       boothId: votingBoothId,
@@ -215,6 +271,39 @@ export default async function globalSetup() {
       { stdio: "inherit", shell: process.platform === "win32" },
     );
     await db.query("update public.elections set status = 'polling_open' where id = $1", [election]);
+  }
+  // Results fixture: freeze for real, open the Election, then seed and close booth 1.
+  const resultsRo = users.results.returningOfficer;
+  execFileSync(
+    "npx",
+    [
+      "tsx",
+      "--conditions=react-server",
+      "scripts/e2e-freeze.ts",
+      resultsElectionId,
+      resultsRo.userId,
+    ],
+    { stdio: "inherit", shell: process.platform === "win32" },
+  );
+  await db.query("update public.elections set status = 'polling_open' where id = $1", [
+    resultsElectionId,
+  ]);
+  execFileSync(
+    "npx",
+    [
+      "tsx",
+      "--conditions=react-server",
+      "scripts/e2e-seed-results.ts",
+      resultsElectionId,
+      resultsBoothId,
+    ],
+    { stdio: "inherit", shell: process.platform === "win32" },
+  );
+  for (const state of ["mock_poll", "mock_cleared", "open"]) {
+    await db.query("update public.booth_states set state = $2 where booth_id = $1", [
+      resultsBooth2Id,
+      state,
+    ]);
   }
   await db.end();
 

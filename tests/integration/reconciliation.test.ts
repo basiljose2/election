@@ -362,10 +362,9 @@ describe("the declaration guard", () => {
     expect(await declare(w)).toMatch(/the election reconciliation failed: audit chain/);
   });
 
-  it("does not itself block a clean election (only results-dashboard's check remains)", async () => {
+  it("lets a clean election through", async () => {
     const w = await closedElection();
     const message = await declare(w);
-    expect(message).not.toMatch(/reconciliation failed/);
-    expect(message).toMatch(/resultsReady/);
+    expect(message).toBeNull();
   });
 });

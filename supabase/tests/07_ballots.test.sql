@@ -2,7 +2,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 grant app_server, app_migrator to postgres with set true;
 grant usage on schema extensions to app_server, app_migrator;
-select plan(50);
+select plan(56);
 
 insert into auth.users (id, email) values ('11111111-1111-1111-1111-111111111111', 'po@test.local');
 insert into public.staff (user_id, email, display_name)
@@ -270,6 +270,34 @@ values ('e0000000-0000-0000-0000-00000000000a', true, '{}');
 select throws_ok(
   $$ update public.reconciliation_runs set election_checks_passed = false $$,
   'P0001', null, 'even the owner cannot change a reconciliation run (trigger)');
+set local role app_server;
+
+-- ---- Results are append-only, one per Election, and the booth-wise reader is sealed
+select is(
+  (select count(*) from public.election_booth_tally('e0000000-0000-0000-0000-00000000000a')),
+  2::bigint, 'the booth-wise tally groups real votes per booth, Post and choice');
+select lives_ok(
+  $$ insert into public.results (id, election_id, canonical_json, result_hash, signature)
+     values ('70000000-0000-0000-0000-000000000001', 'e0000000-0000-0000-0000-00000000000a',
+             '{}', encode(sha256(convert_to('{}', 'UTF8')), 'hex'), repeat('A', 86)) $$,
+  'app_server can store a Result');
+select throws_ok(
+  $$ insert into public.results (election_id, canonical_json, result_hash, signature)
+     values ('e0000000-0000-0000-0000-00000000000a', '{}',
+             encode(sha256(convert_to('{}', 'UTF8')), 'hex'), repeat('A', 86)) $$,
+  '23505', null, 'an Election has exactly one Result');
+select lives_ok(
+  $$ insert into public.result_items (result_id, post_id, candidate_id, is_nota, votes)
+     values ('70000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000001',
+             'c0000000-0000-0000-0000-000000000001', false, 1) $$,
+  'app_server can store Result items');
+select throws_ok(
+  $$ update public.results set result_hash = repeat('0', 64) $$,
+  '42501', null, 'app_server cannot UPDATE a Result');
+reset role;
+select throws_ok(
+  $$ delete from public.result_items $$,
+  'P0001', null, 'even the owner cannot delete Result items (trigger)');
 set local role app_server;
 
 -- app_server is not a member of the reader role, so it cannot become it.

@@ -51,6 +51,18 @@ export interface E2eUsers {
     council: { id: string; candidateIds: string[] };
     presidingOfficer: E2eUser;
   };
+  /**
+   * A really-frozen Election with booth 1 closed and holding seeded signed votes plus its
+   * Booth Tally, and booth 2 (its own Post, no votes) Open.
+   */
+  results: {
+    electionId: string;
+    boothId: string;
+    booth2Id: string;
+    returningOfficer: E2eUser;
+    presidingOfficer1: E2eUser;
+    presidingOfficer2: E2eUser;
+  };
   superAdmin: E2eUser;
   returningOfficer: E2eUser;
   presidingOfficer: E2eUser;

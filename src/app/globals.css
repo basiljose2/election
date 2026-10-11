@@ -28,3 +28,34 @@ body {
     Arial,
     sans-serif;
 }
+
+/*
+ * Results chart colours (dataviz): one accent for Elected, a recessive step of the same hue
+ * for the rest, a neutral grey for NOTA. Defined here, not inline, because the CSP forbids
+ * inline styles; the dark steps are chosen for the dark surface, not inverted.
+ */
+.results-viz {
+  --bar-elected: #2a78d6;
+  --bar-other: #86b6ef;
+  --bar-nota: #8b8a85;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) .results-viz {
+    --bar-elected: #3987e5;
+    --bar-other: #3f6fb0;
+    --bar-nota: #7a7973;
+  }
+}
+
+:root[data-theme="dark"] .results-viz {
+  --bar-elected: #3987e5;
+  --bar-other: #3f6fb0;
+  --bar-nota: #7a7973;
+}
+
+@media print {
+  .no-print {
+    display: none;
+  }
+}

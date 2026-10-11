@@ -374,7 +374,7 @@ describe("Election transitions", () => {
     await expectError(
       executeCommand(commands.declareResults, { electionId: w.electionId }, gw(w.ro)),
       "lifecycle",
-      /resultsReady/,
+      /election reconciliation failed/,
     );
     const ready = createLifecycleCommands({
       publisher: bus,

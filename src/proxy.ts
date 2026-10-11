@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { AUTH_COOKIE_OPTIONS } from "@/lib/auth/cookies";
-import { buildCsp, createNonce, SECURITY_HEADERS } from "@/lib/security/headers";
+import { buildCsp, createNonce, SECURITY_HEADERS, STATIC_ASSET_CSP } from "@/lib/security/headers";
 import { clientKey, createRateLimiter } from "@/lib/security/rate-limit";
 
 /**
@@ -61,6 +61,7 @@ export async function proxy(request: NextRequest) {
         },
       });
       for (const [name, value] of SECURITY_HEADERS) refused.headers.set(name, value);
+      refused.headers.set("Content-Security-Policy", STATIC_ASSET_CSP);
       return refused;
     }
   }

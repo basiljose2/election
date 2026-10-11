@@ -23,6 +23,8 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      - name: Dependency audit (production dependencies; blocks high and critical)
+        run: npm run check:audit
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run format:check

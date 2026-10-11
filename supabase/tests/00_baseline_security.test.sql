@@ -79,29 +79,30 @@ from app_relations t
 cross join api_roles r;
 
 -- Negative tests: actual write attempts are rejected by the database.
-select is(
-  pg_temp.try_as(r.role_name, format('insert into public.%I default values', t.relname)),
-  '42501',
+-- (A view that cannot be written at all is refused by the rewriter with 55000 before
+-- privileges are even checked; the privilege test above covers its grants.)
+select ok(
+  pg_temp.try_as(r.role_name, format('insert into public.%I default values', t.relname)) in (
+    '42501', case when t.relkind = 'v' then '55000' else '42501' end),
   format('%s cannot INSERT into public.%I', r.role_name, t.relname)
 )
 from app_relations t
 cross join (values ('anon'), ('authenticated')) as r(role_name);
 
-select is(
+select ok(
   pg_temp.try_as(
     r.role_name,
     format('update public.%I set %I = %I', t.relname, t.plain_column, t.plain_column)
-  ),
-  '42501',
+  ) in ('42501', case when t.relkind = 'v' then '55000' else '42501' end),
   format('%s cannot UPDATE public.%I', r.role_name, t.relname)
 )
 from app_relations t
 cross join (values ('anon'), ('authenticated')) as r(role_name)
 where t.plain_column is not null;
 
-select is(
-  pg_temp.try_as(r.role_name, format('delete from public.%I', t.relname)),
-  '42501',
+select ok(
+  pg_temp.try_as(r.role_name, format('delete from public.%I', t.relname)) in (
+    '42501', case when t.relkind = 'v' then '55000' else '42501' end),
   format('%s cannot DELETE from public.%I', r.role_name, t.relname)
 )
 from app_relations t

@@ -237,6 +237,10 @@ export default async function globalSetup() {
         electionId: resultsElectionId,
         boothId: resultsBooth2Id,
       }),
+      observer: await staff("results-observer", "observer", { electionId: resultsElectionId }),
+      feedOfficer: await staff("results-feed-ro", "returning_officer", {
+        electionId: resultsElectionId,
+      }),
     },
     voting: {
       electionId: votingElectionId,

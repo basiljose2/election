@@ -2,6 +2,16 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { AUTH_COOKIE_OPTIONS } from "@/lib/auth/cookies";
 import { buildCsp, createNonce, SECURITY_HEADERS } from "@/lib/security/headers";
+import { clientKey, createRateLimiter } from "@/lib/security/rate-limit";
+
+/**
+ * Public pages and downloads are rate limited per client (the Vercel Firewall rule is the
+ * first line; this is the fallback). Read-only data only, so a refusal never blocks voting.
+ */
+const publicLimiter = createRateLimiter({
+  limit: Number(process.env.PUBLIC_RATE_LIMIT_PER_MINUTE ?? 60),
+  windowMs: 60_000,
+});
 
 /** WebSocket (and HTTP) origins of the real-time provider. */
 function realtimeOrigins(supabaseUrl: string | undefined, extra: string | undefined): string[] {
@@ -38,6 +48,22 @@ interface PendingCookie {
  */
 export async function proxy(request: NextRequest) {
   const nonce = createNonce();
+  const publicPath =
+    request.nextUrl.pathname === "/public" || request.nextUrl.pathname.startsWith("/public/");
+  if (publicPath) {
+    const decision = publicLimiter.check(clientKey(request.headers));
+    if (!decision.allowed) {
+      const refused = new NextResponse("Too many requests. Please slow down.", {
+        status: 429,
+        headers: {
+          "Retry-After": String(decision.retryAfterSeconds),
+          "Cache-Control": "no-store",
+        },
+      });
+      for (const [name, value] of SECURITY_HEADERS) refused.headers.set(name, value);
+      return refused;
+    }
+  }
   // Terminal screens (and only those) open the real-time connection from the browser.
   const path = request.nextUrl.pathname;
   const isTerminalPage =

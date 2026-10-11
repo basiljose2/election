@@ -122,6 +122,15 @@ export default async function ElectionSetupPage({
           Reconciliation report
         </Link>
       )}
+      {election.status !== "draft" && (
+        <Link
+          href={`/admin/elections/${electionId}/audit`}
+          className="text-sm underline"
+          data-testid="audit-link"
+        >
+          Audit feed
+        </Link>
+      )}
       {!isRo && (
         <Notice tone="info">
           Only this election&apos;s Returning Officer can change its setup.

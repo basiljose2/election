@@ -62,6 +62,9 @@ export interface E2eUsers {
     returningOfficer: E2eUser;
     presidingOfficer1: E2eUser;
     presidingOfficer2: E2eUser;
+    observer: E2eUser;
+    /** A second Returning Officer, so a spec can act without the first one's authenticator. */
+    feedOfficer: E2eUser;
   };
   superAdmin: E2eUser;
   returningOfficer: E2eUser;

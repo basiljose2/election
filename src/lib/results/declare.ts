@@ -221,7 +221,10 @@ export async function loadResult(db: Queryable, electionId: string): Promise<Sto
  * change. Computing, storing and signing therefore commit or roll back together with the
  * move to Results Declared: a failure anywhere leaves Polling Completed and no Result.
  */
-export function resultsHooks(masterKey: () => Buffer): HookRegistry {
+export function resultsHooks(
+  masterKey: () => Buffer,
+  afterCommit?: (electionId: string) => Promise<void>,
+): HookRegistry {
   return [
     {
       action: "declare_results",
@@ -277,6 +280,9 @@ export function resultsHooks(masterKey: () => Buffer): HookRegistry {
             );
           }
         }
+
+        // Runs only once the declaration has committed (e.g. to store the verification bundle).
+        if (afterCommit) ctx.onCommit(() => afterCommit(info.electionId));
 
         return {
           declared_result: {

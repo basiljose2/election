@@ -42,3 +42,21 @@ export function supabaseImageStore(): ImageStore {
 
 /** Same-origin URL used in pages. */
 export const candidateImageUrl = (hash: string): string => `/media/candidates/${hash}`;
+
+/**
+ * Removes every uploaded candidate image (test-data erase only). Best effort: returns how many
+ * files were removed; a missing bucket is not an error.
+ */
+export async function clearMediaBucket(): Promise<number> {
+  const bucket = createSupabaseAdminClient().storage.from(MEDIA_BUCKET);
+  let removed = 0;
+  for (let round = 0; round < 50; round++) {
+    const { data, error } = await bucket.list("", { limit: 1000 });
+    if (error || !data || data.length === 0) break;
+    const names = data.filter((f) => f.name).map((f) => f.name);
+    const { error: removeError } = await bucket.remove(names);
+    if (removeError) break;
+    removed += names.length;
+  }
+  return removed;
+}

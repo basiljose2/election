@@ -5,7 +5,7 @@ import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { useTerminalState } from "@/lib/signals/use-terminal-state";
 import { createAudioContext, playTone, TEST_TONE, VOTE_BEEP } from "./audio";
 import { ballotReducer, buildAnswers, initialBallotState, type BoothBallot } from "./ballot-model";
-import { MessageScreen, PostScreen, ReviewScreen } from "./ballot-views";
+import { CastingScreen, MessageScreen, PostScreen, ReviewScreen } from "./ballot-views";
 import { castWithRetry, sleep } from "./cast";
 import { useFullscreenGuard, useKioskProtections, useWakeLock } from "./kiosk";
 import { STRINGS } from "./strings";
@@ -198,7 +198,7 @@ export function VotingTerminalScreen() {
       </main>
     );
   } else if (phase.kind === "casting") {
-    screen = <MessageScreen testId="terminal-casting" title={STRINGS.recording} />;
+    screen = <CastingScreen />;
   } else if (phase.kind === "recorded") {
     screen = <MessageScreen testId="terminal-recorded" title={STRINGS.recorded} />;
   } else {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import {
   isPostComplete,
   postHint,
@@ -305,5 +305,28 @@ export function MessageScreen({
       </h1>
       {detail && <p className="text-xl">{detail}</p>}
     </main>
+  );
+}
+
+/** How long "Recording your vote…" shows alone before it asks the voter to call for help. */
+export const CASTING_SLOW_AFTER_MS = 12_000;
+
+/**
+ * The screen while a cast is being sent. It keeps retrying without limit (a vote must be
+ * recorded exactly once), but a voter must never be left staring at it unexplained: after a
+ * while it says so, and the Presiding Officer can see the pending ballot and cancel it.
+ */
+export function CastingScreen() {
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setSlow(true), CASTING_SLOW_AFTER_MS);
+    return () => clearTimeout(timer);
+  }, []);
+  return (
+    <MessageScreen
+      testId="terminal-casting"
+      title={STRINGS.recording}
+      detail={slow ? STRINGS.recordingSlow : undefined}
+    />
   );
 }

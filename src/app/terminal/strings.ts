@@ -25,6 +25,8 @@ export const STRINGS = {
   changeShort: "Change",
   castMyVote: "Cast my vote",
   recording: "Recording your vote…",
+  recordingSlow:
+    "This is taking longer than usual. Please do not leave. Tell the Presiding Officer: your vote is still being sent.",
   recorded: "Your vote has been recorded",
   returnToFullscreen: "Return to full screen",
   fullscreenExited: "Full screen was closed. The ballot is hidden until it is restored.",

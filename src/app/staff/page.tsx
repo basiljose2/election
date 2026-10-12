@@ -36,6 +36,7 @@ export default async function StaffHome() {
           <Link href="/master">Master Terminal</Link>
         )}
         {superAdminGrant(actor) && <Link href="/admin/staff">Manage staff</Link>}
+        {superAdminGrant(actor) && <Link href="/admin/system">Test data</Link>}
       </nav>
       <form action={signOutAction}>
         <Button type="submit" variant="plain">

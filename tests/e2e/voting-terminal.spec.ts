@@ -378,6 +378,41 @@ test("contrast and touch targets meet the requirements on every screen", async (
   await audit("locked screen");
 });
 
+test("a cast that keeps failing says so, keeps retrying, and the officer can cancel it", async () => {
+  await pressBallot();
+  await expect(kiosk.getByTestId("terminal-unlocked")).toBeVisible();
+  await select(president.candidateIds[0]!).click();
+  await next().click();
+  await select(council.candidateIds[0]!).click();
+  await select(council.candidateIds[1]!).click();
+  await next().click();
+
+  // The server answers every cast with a 500 (for example a missing signing key).
+  let attempts = 0;
+  await kiosk.route("**/terminal/api/cast", (route) => {
+    attempts += 1;
+    return route.fulfill({ status: 500, json: { status: "error" } });
+  });
+  const before = await castSessions();
+  await kiosk.getByTestId("cast").click();
+  await expect(kiosk.getByTestId("terminal-casting")).toBeVisible();
+
+  // After a while it asks the voter to stay and call the Presiding Officer; it keeps trying.
+  await expect(kiosk.getByText(/taking longer than usual/)).toBeVisible({ timeout: 25_000 });
+  await expect(kiosk.getByTestId("terminal-casting")).toBeVisible();
+  expect(attempts).toBeGreaterThan(2);
+  expect(await castSessions()).toBe(before);
+
+  // The Presiding Officer sees the pending ballot and cancels it: the kiosk locks.
+  await kiosk.unroute("**/terminal/api/cast");
+  await master.getByTestId("cancel-ballot").click();
+  await master.getByRole("dialog").getByLabel("Terminal fault").check();
+  await master.getByRole("dialog").getByRole("button", { name: "Cancel ballot" }).click();
+  await expect(kiosk.getByTestId("terminal-locked")).toBeVisible({ timeout: 15_000 });
+  await expect(kiosk.getByTestId("terminal-notice")).toContainText("cancelled");
+  expect(await castSessions()).toBe(before);
+});
+
 test("a reload while locked shows no ballot; the terminal must be activated again", async () => {
   await kiosk.reload();
   await expect(kiosk.getByTestId("terminal-not-activated")).toBeVisible();

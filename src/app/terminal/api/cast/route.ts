@@ -41,12 +41,13 @@ export async function POST(request: Request) {
     logCastFailure(guard.terminal, result);
     if (result.status === "invalid") return json(422, { status: "invalid", issues: result.issues });
     return json(409, { status: "rejected", reason: result.reason });
-  } catch {
-    // Never include the error object: its message could carry query parameters.
+  } catch (error) {
+    // Never include the error object: its message could carry query parameters. The class
+    // name and the database error code identify the failure without carrying any data.
     logger.error("cast.error", {
       booth_id: guard.terminal.boothId,
       terminal_id: guard.terminal.id,
-      error_code: "cast_failed",
+      error_code: `cast_failed:${error instanceof Error ? error.constructor.name : "unknown"}:${String((error as { code?: unknown }).code ?? "")}`,
     });
     return json(500, { status: "error" });
   }

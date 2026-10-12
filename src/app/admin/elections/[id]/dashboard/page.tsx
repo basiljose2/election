@@ -7,7 +7,7 @@ import { electionGrant } from "@/lib/auth/roles";
 import { isCommandError } from "@/lib/commands/errors";
 import { getPool } from "@/lib/db/pool";
 import { getPollingDashboard } from "@/lib/results/polling-dashboard";
-import { completePollsAction, declareResultsAction } from "./actions";
+import { completePollsAction, declareResultsAction, startPollingAction } from "./actions";
 import { LiveBooths } from "./live-booths";
 
 export const metadata: Metadata = { title: "Election dashboard · Campus EVM" };
@@ -54,6 +54,21 @@ export default async function DashboardPage({
       </p>
 
       <LiveBooths initial={dashboard} canForceClose={canAct} />
+
+      {status === "frozen" && canAct && (
+        <section className="flex flex-col gap-2" aria-label="Start polling">
+          <p className="text-sm">
+            Starting polling opens the election: Presiding Officers can then open their polls and
+            real ballots can be issued. Mock polls can be run before or after.
+          </p>
+          <form action={startPollingAction}>
+            <input type="hidden" name="electionId" value={electionId} />
+            <Button type="submit" data-testid="start-polling">
+              Start polling
+            </Button>
+          </form>
+        </section>
+      )}
 
       {status === "polling_open" && canAct && (
         <form action={completePollsAction} className="flex flex-col gap-2">

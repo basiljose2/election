@@ -40,6 +40,16 @@ async function run(
   redirect(`${page}?error=${encodeURIComponent(message)}`);
 }
 
+export async function startPollingAction(formData: FormData): Promise<void> {
+  const electionId = field(formData, "electionId");
+  const lifecycle = createAppLifecycle(await getSignalPublisher());
+  await run(
+    electionId,
+    () => executeCommand(lifecycle.startPolling, { electionId }),
+    "Polling is open",
+  );
+}
+
 export async function completePollsAction(formData: FormData): Promise<void> {
   const electionId = field(formData, "electionId");
   const lifecycle = createAppLifecycle(await getSignalPublisher());

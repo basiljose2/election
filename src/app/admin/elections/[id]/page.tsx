@@ -115,6 +115,15 @@ export default async function ElectionSetupPage({
       )}
       {election.status !== "draft" && (
         <Link
+          href={`/admin/elections/${electionId}/dashboard`}
+          className="text-sm underline"
+          data-testid="dashboard-link"
+        >
+          Dashboard (start polling, live booths, declare results)
+        </Link>
+      )}
+      {election.status !== "draft" && (
+        <Link
           href={`/admin/elections/${electionId}/reconciliation`}
           className="text-sm underline"
           data-testid="reconciliation-link"
